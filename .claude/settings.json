@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude_ai_Supabase__list_projects",
+      "mcp__claude_ai_Supabase__execute_sql",
+      "mcp__claude_ai_Supabase__list_tables",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Projetos\\\\PROJETO_BI_OMIE_2026\\\\ETL_Omie_Unificado\" -Recurse -Directory | ForEach-Object { $_.FullName } | Sort-Object)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Projetos\\\\PROJETO_BI_OMIE_2026\\\\ETL_Omie_Unificado\" -Recurse -File | ForEach-Object { $_.FullName } | Sort-Object)",
+      "mcp__claude_ai_Supabase__apply_migration",
+      "Bash(python -m pip install openpyxl -q)",
+      "Bash(python -c ' *)"
+    ]
+  }
+}

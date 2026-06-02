@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>ExecutarTodasEmpresas</name>
+    <name_sync_with_filename>Y</name_sync_with_filename>
+    <description>Lê empresas ativas do banco e executa o master workflow para cada uma</description>
+    <extended_description/>
+    <pipeline_version/>
+    <pipeline_type>Normal</pipeline_type>
+    <parameters>
+    </parameters>
+    <capture_transform_performance>N</capture_transform_performance>
+    <transform_performance_capturing_delay>1000</transform_performance_capturing_delay>
+    <transform_performance_capturing_size_limit>100</transform_performance_capturing_size_limit>
+    <created_user>-</created_user>
+    <created_date>2026/04/16 00:00:00.000</created_date>
+    <modified_user>-</modified_user>
+    <modified_date>2026/04/16 00:00:00.000</modified_date>
+  </info>
+  <notepads>
+  </notepads>
+  <order>
+    <hop>
+      <from>Ler Empresas Ativas</from>
+      <to>Executar Master por Empresa</to>
+      <enabled>Y</enabled>
+    </hop>
+    <hop>
+      <from>Executar Master por Empresa</from>
+      <to>Log Resultado Empresa</to>
+      <enabled>Y</enabled>
+    </hop>
+  </order>
+  <transform>
+    <name>Ler Empresas Ativas</name>
+    <type>TableInput</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <connection>Stg_Omie_Generic</connection>
+    <execute_each_row>N</execute_each_row>
+    <limit>0</limit>
+    <sql>SELECT
+  id          AS P_ID_EMPRESA,
+  omie_app_key    AS P_API_KEY,
+  omie_app_secret AS P_API_SECRET
+FROM config.empresas
+WHERE ativo = true
+ORDER BY id</sql>
+    <variables_active>N</variables_active>
+    <attributes/>
+    <GUI>
+      <xloc>160</xloc>
+      <yloc>160</yloc>
+    </GUI>
+  </transform>
+  <transform>
+    <name>Executar Master por Empresa</name>
+    <type>WorkflowExecutor</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <filename>${PROJECT_HOME}/wf_master_extracao_completa.hwf</filename>
+    <run_configuration>local</run_configuration>
+    <parameters>
+      <pass_all_parameters>N</pass_all_parameters>
+      <parameter>
+        <name>P_ID_EMPRESA</name>
+        <stream_name>P_ID_EMPRESA</stream_name>
+        <value/>
+      </parameter>
+      <parameter>
+        <name>P_API_KEY</name>
+        <stream_name>P_API_KEY</stream_name>
+        <value/>
+      </parameter>
+      <parameter>
+        <name>P_API_SECRET</name>
+        <stream_name>P_API_SECRET</stream_name>
+        <value/>
+      </parameter>
+    </parameters>
+    <execution_result_target_transform>Log Resultado Empresa</execution_result_target_transform>
+    <execution_time_field>execution_time</execution_time_field>
+    <execution_result_field>execution_result</execution_result_field>
+    <execution_errors_field>execution_errors</execution_errors_field>
+    <execution_lines_read_field/>
+    <execution_lines_written_field/>
+    <execution_lines_input_field/>
+    <execution_lines_output_field/>
+    <execution_lines_rejected_field/>
+    <execution_lines_updated_field/>
+    <execution_lines_deleted_field/>
+    <execution_files_retrieved_field/>
+    <execution_exit_status_field/>
+    <execution_logged_field/>
+    <execution_log_channel_id_field/>
+    <group_size>1</group_size>
+    <group_field/>
+    <group_time/>
+    <wait_until_finished>Y</wait_until_finished>
+    <attributes/>
+    <GUI>
+      <xloc>400</xloc>
+      <yloc>160</yloc>
+    </GUI>
+  </transform>
+  <transform>
+    <name>Log Resultado Empresa</name>
+    <type>WriteToLog</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <displayHeader>Y</displayHeader>
+    <isBasic>N</isBasic>
+    <isDebug>N</isDebug>
+    <isDetailed>N</isDetailed>
+    <isError>N</isError>
+    <isMinimal>N</isMinimal>
+    <isRowlevel>N</isRowlevel>
+    <limitRows>N</limitRows>
+    <limitRowsNumber>0</limitRowsNumber>
+    <logMessage>Resultado execucao empresa: result=[execution_result] errors=[execution_errors] time=[execution_time]ms</logMessage>
+    <loglevel>Basic</loglevel>
+    <fields>
+      <field>
+        <name>execution_result</name>
+      </field>
+      <field>
+        <name>execution_errors</name>
+      </field>
+      <field>
+        <name>execution_time</name>
+      </field>
+    </fields>
+    <attributes/>
+    <GUI>
+      <xloc>640</xloc>
+      <yloc>160</yloc>
+    </GUI>
+  </transform>
+  <transform_error_handling>
+  </transform_error_handling>
+  <attributes/>
+</pipeline>

@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_context-mode_context-mode__ctx_execute_file",
+      "mcp__plugin_context-mode_context-mode__ctx_execute",
+      "Bash(psql -U postgres -f \"C:/Users/jonatas.garcia/OneDrive - Conjel Contabilidade e Controladoria Ss Ltda/_PROJETOS/PROJETO_BI_OMIE_2026/database/01_criar_banco.sql\")",
+      "Bash(cmd /c \"where psql\")",
+      "Bash(cmd /c \"pg_config --bindir\")",
+      "Bash(docker exec *)",
+      "Bash(docker port *)",
+      "Bash(netstat -ano)",
+      "Bash(cmd /c \"netstat -ano | findstr :5432\")",
+      "Bash(cmd /c \"tasklist /FI \\\\\"PID eq 24868\\\\\" /FO LIST\")",
+      "mcp__plugin_context-mode_context-mode__ctx_search",
+      "mcp__postgres__query",
+      "Bash(python fix_table_names.py)",
+      "Bash(hop.bat run *)",
+      "Bash(bash executar_master_hop.sh)",
+      "Bash(psql -U postgres -d bi_omie -f \"C:/Users/jonatas.garcia/OneDrive - Conjel Contabilidade e Controladoria Ss Ltda/_PROJETOS/PROJETO_BI_OMIE_2026/database/04_recreate_stg_fato_contas_pagar.sql\")",
+      "Bash(psql -U postgres -d bi_omie -c \"SELECT current_database\\(\\);\")",
+      "Bash(\"/c/Program Files/PostgreSQL/18/bin/psql.exe\" -U postgres -d bi_omie -c \"SELECT current_database\\(\\);\")",
+      "Bash(cmd.exe /c \"\\\\\"C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe\\\\\" -U postgres -d bi_omie -c \\\\\"SELECT current_database\\(\\);\\\\\"\")",
+      "Bash(cmd.exe /c \"C:\\\\PROGRA~1\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe -U postgres -d bi_omie -c \\\\\"SELECT current_database\\(\\);\\\\\"\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe' -U postgres -d bi_omie -c 'SELECT current_database\\(\\);'\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\Program Files\\\\PostgreSQL' -ErrorAction SilentlyContinue | Select-Object Name\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\Program Files\\\\PostgreSQL\\\\18\\\\bin\\\\psql.exe' -ErrorAction SilentlyContinue\")",
+      "Bash(powershell.exe -Command \"Get-ChildItem 'C:\\\\Program Files\\\\PostgreSQL\\\\18' | Select-Object Name\")",
+      "Bash(powershell.exe -Command \"Get-Command psql -ErrorAction SilentlyContinue; Get-ChildItem 'C:\\\\' -Filter psql.exe -Recurse -ErrorAction SilentlyContinue -Depth 6 | Select-Object FullName\")",
+      "mcp__powerbi-modeling-mcp__model_operations",
+      "mcp__powerbi-modeling-mcp__measure_operations",
+      "mcp__powerbi-modeling-mcp__dax_query_operations",
+      "mcp__094f115d-2fa1-4232-870c-7cc7bdd031c1__list_teams",
+      "mcp__094f115d-2fa1-4232-870c-7cc7bdd031c1__list_projects",
+      "mcp__094f115d-2fa1-4232-870c-7cc7bdd031c1__get_runtime_logs",
+      "mcp__094f115d-2fa1-4232-870c-7cc7bdd031c1__get_project",
+      "mcp__87cae168-e9fc-4c06-874c-f818169f269c__get_advisors",
+      "mcp__87cae168-e9fc-4c06-874c-f818169f269c__apply_migration",
+      "mcp__094f115d-2fa1-4232-870c-7cc7bdd031c1__list_deployments"
+    ]
+  }
+}

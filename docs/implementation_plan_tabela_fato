@@ -1,0 +1,43 @@
+# Planejamento: Tabela Fato de Movimentos Financeiros (v5 - Final)
+
+Este plano detalha o mapeamento final e a arquitetura para a construção da tabela fato `fact_movimento_financeiro`.
+
+## User Review Required
+
+> [!IMPORTANT]
+> **Arquitetura SQL/ELT:** O Apache Hop será o extrator (Staging). O PostgreSQL será o transformador (SQL).
+> **Estratégia Full Reload:** A cada execução, a tabela fato será limpa e recarregada desde 01/01/2022 para garantir 100% de sincronia com o Omie.
+
+## Proposto: Fluxo de Transformação SQL
+
+### 1. Camada de Staging
+Os dados brutos são carregados nas tabelas de staging via Hop, mantendo a integridade dos JSONs de rateio que serão processados no banco.
+
+### 2. View de Unificação (`dw.vw_movimento_financeiro_unificado`)
+View consolidada que realiza o `UNION ALL` entre:
+- **Contas a Pagar/Receber:** Mapeamento de títulos com explosão de rateio por Categoria e Departamento.
+- **Lançamentos de Conta Corrente:** Captura de movimentações diretas (tarifas, rendimentos, juros) e link com títulos baixados.
+- **Tratamento de Datas:** Mapeamento explícito de Emissão, Vencimento e Pagamento.
+
+### 3. Procedure de Carga (`dw.sp_load_fact_movimento_financeiro`)
+Procedure que executa o "Full Reload":
+1. Executa `TRUNCATE` ou `DELETE` na tabela fato para o período histórico.
+2. Realiza a carga a partir da View de Unificação.
+3. Atribui as Surrogate Keys para as dimensões: `sk_data`, `sk_categoria`, `sk_departamento`, `sk_entidade`, `sk_conta_corrente`, `sk_empresa`.
+
+---
+
+## Regras de Categoria e Negócio
+- **Fidelidade à Origem:** As categorias serão respeitadas **fielmente** conforme configuradas no Omie, sem substituições ou agrupamentos genéricos no ETL.
+- **Rendimentos de Investimento:** Mapeados conforme a categoria atribuída no lançamento direto do extrato.
+- **Transferências:** Identificadas via campo `nCodCCDestino` e marcadas com a flag `is_transferencia = 'S'`.
+
+---
+
+## Plano de Entrega SQL
+1. **DDL Tabela Fato:** Definição final de colunas e índices.
+2. **Script de View:** Query de unificação CR + CP + CC.
+3. **Stored Procedure:** Lógica de carga e limpeza periódica.
+
+## Próximos Passos
+Conforme solicitado, este planejamento encerra a fase de mapeamento. Para iniciar a construção, bastará aprovar este plano final.

@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>processaPaginasListaMovimentos</name>
+    <name_sync_with_filename>Y</name_sync_with_filename>
+    <description/>
+    <extended_description/>
+    <pipeline_version/>
+    <pipeline_type>Normal</pipeline_type>
+    <parameters>
+    </parameters>
+    <capture_transform_performance>N</capture_transform_performance>
+    <transform_performance_capturing_delay>1000</transform_performance_capturing_delay>
+    <transform_performance_capturing_size_limit>100</transform_performance_capturing_size_limit>
+    <created_user>-</created_user>
+    <created_date>2025/08/30 14:44:36.206</created_date>
+    <modified_user>-</modified_user>
+    <modified_date>2025/08/30 14:44:36.206</modified_date>
+  </info>
+  <notepads>
+  </notepads>
+  <order>
+    <hop>
+      <from>Dummy</from>
+      <to>Requisicao API</to>
+      <enabled>Y</enabled>
+    </hop>
+    <hop>
+      <from>Lista Movimentos API</from>
+      <to>Meta Dados Lista Movimentos</to>
+      <enabled>Y</enabled>
+    </hop>
+    <hop>
+      <from>Processa API Listar Movimentos</from>
+      <to>Lista Movimentos API</to>
+      <enabled>Y</enabled>
+    </hop>
+    <hop>
+      <from>Requisicao API</from>
+      <to>Processa API Listar Movimentos</to>
+      <enabled>Y</enabled>
+    </hop>
+    <hop>
+      <from>Meta Dados Lista Movimentos</from>
+      <to>Sanitizar nTotPaginas</to>
+      <enabled>Y</enabled>
+    </hop>
+    <hop>
+      <from>Sanitizar nTotPaginas</from>
+      <to>Variavel Paginas Lista Movimento</to>
+      <enabled>Y</enabled>
+    </hop>
+  </order>
+  <transform>
+    <name>Dummy</name>
+    <type>RowGenerator</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <fields>
+</fields>
+    <interval_in_ms>5000</interval_in_ms>
+    <last_time_field>FiveSecondsAgo</last_time_field>
+    <limit>1</limit>
+    <never_ending>N</never_ending>
+    <row_time_field>now</row_time_field>
+    <attributes/>
+    <GUI>
+      <xloc>96</xloc>
+      <yloc>176</yloc>
+    </GUI>
+  </transform>
+  <transform>
+    <name>Lista Movimentos API</name>
+    <type>JsonInput</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <include>N</include>
+    <include_field/>
+    <rownum>N</rownum>
+    <addresultfile>N</addresultfile>
+    <readurl>N</readurl>
+    <removeSourceField>N</removeSourceField>
+    <IsIgnoreEmptyFile>N</IsIgnoreEmptyFile>
+    <doNotFailIfNoFile>Y</doNotFailIfNoFile>
+    <ignoreMissingPath>Y</ignoreMissingPath>
+    <defaultPathLeafToNull>Y</defaultPathLeafToNull>
+    <rownum_field/>
+    <file>
+      <name/>
+      <filemask/>
+      <exclude_filemask/>
+      <file_required>N</file_required>
+      <include_subfolders>N</include_subfolders>
+    </file>
+    <fields>
+      <field>
+        <name>nTotPaginas</name>
+        <path>$.nTotPaginas</path>
+        <type>String</type>
+        <format/>
+        <currency/>
+        <decimal/>
+        <group/>
+        <length>-1</length>
+        <precision>-1</precision>
+        <trim_type>none</trim_type>
+        <repeat>N</repeat>
+      </field>
+    </fields>
+    <limit>0</limit>
+    <IsInFields>Y</IsInFields>
+    <IsAFile>N</IsAFile>
+    <valueField>api_response</valueField>
+    <shortFileFieldName/>
+    <pathFieldName/>
+    <hiddenFieldName/>
+    <lastModificationTimeFieldName/>
+    <uriNameFieldName/>
+    <rootUriNameFieldName/>
+    <extensionFieldName/>
+    <sizeFieldName/>
+    <attributes/>
+    <GUI>
+      <xloc>656</xloc>
+      <yloc>176</yloc>
+    </GUI>
+  </transform>
+  <transform>
+    <name>Meta Dados Lista Movimentos</name>
+    <type>SelectValues</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <fields>
+      <field>
+        <length>-2</length>
+        <name>nTotPaginas</name>
+        <precision>-2</precision>
+      </field>
+      <select_unspecified>N</select_unspecified>
+    </fields>
+    <attributes/>
+    <GUI>
+      <xloc>880</xloc>
+      <yloc>176</yloc>
+    </GUI>
+  </transform>
+  <transform>
+    <name>Processa API Listar Movimentos</name>
+    <type>Rest</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <applicationType>JSON</applicationType>
+    <bodyField>request_body</bodyField>
+    <connectionTimeout>10000</connectionTimeout>
+    <dynamicMethod>N</dynamicMethod>
+    <headers>
+</headers>
+    <ignoreSsl>N</ignoreSsl>
+    <matrixParameters>
+</matrixParameters>
+    <method>POST</method>
+    <parameters>
+</parameters>
+    <preemptive>N</preemptive>
+    <readTimeout>10000</readTimeout>
+    <result>
+      <code>api_status_code</code>
+      <name>api_response</name>
+    </result>
+    <trustStorePassword>Encrypted </trustStorePassword>
+    <url>https://app.omie.com.br/api/v1/financas/mf/</url>
+    <urlInField>N</urlInField>
+    <attributes/>
+    <GUI>
+      <xloc>448</xloc>
+      <yloc>176</yloc>
+    </GUI>
+  </transform>
+  <transform>
+    <name>Requisicao API</name>
+    <type>ScriptValueMod</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <optimizationLevel>9</optimizationLevel>
+    <jsScripts>
+      <jsScript>
+        <jsScript_type>0</jsScript_type>
+        <jsScript_name>Script 1</jsScript_name>
+        <jsScript_script>//Script here
+
+
+
+var v_app_key = getVariable("API_APP_KEY", ""); 
+var v_app_secret = getVariable("API_APP_SECRET", "");
+var v_pagina = getVariable("contador", "1");
+
+
+var requisicao = {
+  "call": "ListarMovimentos",
+  "app_key":v_app_key,
+  "app_secret":v_app_secret,
+	"param": [
+    {
+      "nPagina":1,
+      "nRegPorPagina": 500
+    
+    }
+  ]
+};
+
+// Converte o objeto em uma string no formato JSON.
+// Esta string será colocada em um novo campo de saída chamado 'request_body'.
+var request_body = JSON.stringify(requisicao);
+</jsScript_script>
+      </jsScript>
+    </jsScripts>
+    <fields>
+      <field>
+        <name>request_body</name>
+        <rename>request_body</rename>
+        <type>String</type>
+        <length>-1</length>
+        <precision>-1</precision>
+        <replace>N</replace>
+      </field>
+    </fields>
+    <attributes/>
+    <GUI>
+      <xloc>256</xloc>
+      <yloc>176</yloc>
+    </GUI>
+  </transform>
+  <transform>
+    <name>Sanitizar nTotPaginas</name>
+    <type>ScriptValueMod</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <optimizationLevel>9</optimizationLevel>
+    <jsScripts>
+      <jsScript>
+        <jsScript_type>0</jsScript_type>
+        <jsScript_name>Script 1</jsScript_name>
+        <jsScript_script>var val = nTotPaginas;
+if (val === null || val === undefined || val === '' || val === '[]' || isNaN(parseInt(val))) {
+  nTotPaginas = '0';
+} else {
+  nTotPaginas = String(parseInt(val));
+}</jsScript_script>
+      </jsScript>
+    </jsScripts>
+    <fields>
+      <field>
+        <name>nTotPaginas</name>
+        <rename>nTotPaginas</rename>
+        <type>String</type>
+        <length>-1</length>
+        <precision>-1</precision>
+        <replace>Y</replace>
+      </field>
+    </fields>
+    <attributes/>
+    <GUI>
+      <xloc>1032</xloc>
+      <yloc>176</yloc>
+    </GUI>
+  </transform>
+  <transform>
+    <name>Variavel Paginas Lista Movimento</name>
+    <type>SetVariable</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <fields>
+      <field>
+        <field_name>nTotPaginas</field_name>
+        <variable_name>v_paginas_api_listar_movimento</variable_name>
+        <variable_type>JVM</variable_type>
+      </field>
+    </fields>
+    <use_formatting>Y</use_formatting>
+    <attributes/>
+    <GUI>
+      <xloc>1344</xloc>
+      <yloc>176</yloc>
+    </GUI>
+  </transform>
+  <transform_error_handling>
+  </transform_error_handling>
+  <attributes/>
+</pipeline>

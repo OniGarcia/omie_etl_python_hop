@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pipeline>
+  <info>
+    <name>CargaDimContaCorrente</name>
+    <name_sync_with_filename>Y</name_sync_with_filename>
+    <description>Carga SCD2 da Dimensão Contas Corrente</description>
+    <extended_description/>
+    <pipeline_version/>
+    <pipeline_type>Normal</pipeline_type>
+    <parameters>
+    </parameters>
+    <capture_transform_performance>N</capture_transform_performance>
+    <transform_performance_capturing_delay>1000</transform_performance_capturing_delay>
+    <transform_performance_capturing_size_limit/>
+    <created_user/>
+    <created_date>2026/01/12 22:10:16.299</created_date>
+    <modified_user/>
+    <modified_date>2026/01/12 22:10:16.299</modified_date>
+  </info>
+  <notepads>
+  </notepads>
+  <order>
+    <hop>
+      <from>Ler Stg Contas</from>
+      <to>Dimension lookup/update</to>
+      <enabled>Y</enabled>
+    </hop>
+  </order>
+  <transform>
+    <name>Dimension lookup/update</name>
+    <type>DimensionLookup</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <cache_size>5000</cache_size>
+    <commit>100</commit>
+    <connection>Stg_Omie_Generic</connection>
+    <fields>
+      <date>
+        <from>date_from</from>
+        <name/>
+        <to>date_to</to>
+      </date>
+      <field>
+        <lookup>nome_conta</lookup>
+        <name>nome_conta</name>
+        <update>Insert</update>
+      </field>
+      <field>
+        <lookup>tipo_conta</lookup>
+        <name>tipo</name>
+        <update>Insert</update>
+      </field>
+      <field>
+        <lookup>saldo_inicial</lookup>
+        <name>saldo_inicial</name>
+        <update>Insert</update>
+      </field>
+      <key>
+        <lookup>id_empresa</lookup>
+        <name>id_empresa</name>
+      </key>
+      <key>
+        <lookup>id_conta_corrente_omie</lookup>
+        <name>n_cod_cc</name>
+      </key>
+      <return>
+        <creation_method>tablemax</creation_method>
+        <name>sk_conta_corrente</name>
+        <rename/>
+        <version>version</version>
+      </return>
+    </fields>
+    <max_year>2199</max_year>
+    <min_year>1900</min_year>
+    <preload_cache>N</preload_cache>
+    <schema>staging</schema>
+    <sequence/>
+    <start_date_field_name/>
+    <table>dim_contas_corrente</table>
+    <update>Y</update>
+    <useBatch>N</useBatch>
+    <use_start_date_alternative>N</use_start_date_alternative>
+    <attributes/>
+    <GUI>
+      <xloc>450</xloc>
+      <yloc>100</yloc>
+    </GUI>
+  </transform>
+  <transform>
+    <name>Ler Stg Contas</name>
+    <type>TableInput</type>
+    <description/>
+    <distribute>Y</distribute>
+    <custom_distribution/>
+    <copies>1</copies>
+    <partitioning>
+      <method>none</method>
+      <schema_name/>
+    </partitioning>
+    <connection>Stg_Omie_Generic</connection>
+    <execute_each_row>N</execute_each_row>
+    <limit>0</limit>
+    <sql>SELECT
+  id_empresa,
+  n_cod_cc,
+  descricao as nome_conta,
+  COALESCE(saldo_inicial, 0) as saldo_inicial,
+  tipo
+FROM stg_cad_contas_correntes
+ORDER BY id_empresa, n_cod_cc</sql>
+    <variables_active>N</variables_active>
+    <attributes/>
+    <GUI>
+      <xloc>200</xloc>
+      <yloc>100</yloc>
+    </GUI>
+  </transform>
+  <transform_error_handling>
+  </transform_error_handling>
+  <attributes/>
+</pipeline>

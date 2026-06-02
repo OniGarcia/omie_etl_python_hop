@@ -1,0 +1,51 @@
+{
+  "metadataBaseFolder": "${PROJECT_HOME}/metadata",
+  "unitTestsBasePath": "${PROJECT_HOME}",
+  "dataSetsCsvFolder": "${PROJECT_HOME}/datasets",
+  "enforcingExecutionInHome": true,
+  "parentProjectName": "default",
+  "config": {
+    "variables": [
+      {
+        "name": "VAR_DB_HOST",
+        "value": "db.jcposydvpilkvszbjxlo.supabase.co",
+        "description": "IP do banco"
+      },
+      {
+        "name": "VAR_DB_NAME",
+        "value": "",
+        "description": "nome do banco"
+      },
+      {
+        "name": "VAR_DB_PORT",
+        "value": "5432",
+        "description": "porta do Postgres"
+      },
+      {
+        "name": "VAR_DB_USER",
+        "value": "postgres",
+        "description": "O teu utilizador"
+      },
+      {
+        "name": "VAR_DB_PASS",
+        "value": "au7B3wYEeT8bxgPy",
+        "description": "A tua senha"
+      },
+      {
+        "name": "VAR_OMIE_KEY",
+        "value": "6980025353301",
+        "description": "A App Key da Omie deste cliente"
+      },
+      {
+        "name": "VAR_OMIE_SECRET",
+        "value": "5bdd9e4cbf4774cba1612095ca029443",
+        "description": "O App Secret da Omie"
+      },
+      {
+        "name": "VAR_ID_EMPRESA",
+        "value": "1",
+        "description": "O ID numérico da empresa para o SQL"
+      }
+    ]
+  }
+}
