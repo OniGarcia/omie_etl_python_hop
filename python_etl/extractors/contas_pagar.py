@@ -116,6 +116,9 @@ class ContasPagarExtractor(BaseExtractor):
                     dep.get("nvaldep")
                 ))
 
+        if not db_pagar_rows:
+            return 0
+
         # 1. Inserção na tabela Pai
         query_pagar = """
             INSERT INTO staging.stg_fato_contas_pagar (

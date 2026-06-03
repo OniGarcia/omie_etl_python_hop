@@ -2,6 +2,14 @@ import json
 from psycopg2.extras import execute_values
 from extractors.base import BaseExtractor
 
+def int_or_none(val):
+    if val is None or val == "":
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
 class CategoriasExtractor(BaseExtractor):
     def fetch(self) -> list:
         return self.client.fetch_paginated(
@@ -35,7 +43,7 @@ class CategoriasExtractor(BaseExtractor):
                 record.get("conta_despesa"),
                 record.get("conta_receita"),
                 record.get("conta_inativa"),
-                record.get("id_conta_contabil"),
+                int_or_none(record.get("id_conta_contabil")),
                 record.get("tag_conta_contabil"),
                 record.get("totalizadora"),
                 record.get("definida_pelo_usuario"),

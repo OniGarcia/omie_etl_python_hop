@@ -3,6 +3,14 @@ from datetime import datetime
 from psycopg2.extras import execute_values
 from extractors.base import BaseExtractor
 
+def int_or_none(val):
+    if val is None or val == "":
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
 def parse_timestamp(dt_str):
     if not dt_str:
         return None
@@ -17,8 +25,12 @@ class LancamentosCCExtractor(BaseExtractor):
     def fetch(self) -> list:
         return self.client.fetch_paginated(
             endpoint="financas/contacorrentelancamentos",
-            call_name="ListarLancamentosCC",
-            list_key="listaLancamentos"
+            call_name="ListarLancCC",
+            list_key="listaLancamentos",
+            registros_por_pagina=20,
+            extra_params={},
+            size_param_name="nRegPorPagina",
+            page_param_name="nPagina"
         )
 
     def clean_staging(self, cursor):
@@ -54,27 +66,27 @@ class LancamentosCCExtractor(BaseExtractor):
             db_cc_rows.append((
                 self.company_id,
                 ncodlanc,
-                record.get("nCodAgrup"),
+                int_or_none(record.get("nCodAgrup")),
                 record.get("cCodIntLanc"),
                 parse_timestamp(cabecalho.get("dDtLanc")),
-                cabecalho.get("nCodCC"),
+                int_or_none(cabecalho.get("nCodCC")),
                 cabecalho.get("nValorLanc"),
                 detalhes.get("cCodCateg"),
                 detalhes.get("cNumDoc"),
                 detalhes.get("cObs"),
                 detalhes.get("cTipo"),
-                detalhes.get("nCodCliente"),
-                detalhes.get("nCodProjeto"),
+                int_or_none(detalhes.get("nCodCliente")),
+                int_or_none(detalhes.get("nCodProjeto")),
                 diversos.get("cNatureza"),
                 diversos.get("cOrigem"),
                 parse_timestamp(diversos.get("dDtConc")),
                 diversos.get("cHrConc"),
                 diversos.get("cUsConc"),
                 diversos.get("cIdentLanc"),
-                diversos.get("nCodComprador"),
-                diversos.get("nCodVendedor"),
-                diversos.get("nCodLancCR"),
-                diversos.get("nCodLancCP"),
+                int_or_none(diversos.get("nCodComprador")),
+                int_or_none(diversos.get("nCodVendedor")),
+                int_or_none(diversos.get("nCodLancCR")),
+                int_or_none(diversos.get("nCodLancCP")),
                 parse_timestamp(info.get("dInc")),
                 info.get("hInc"),
                 info.get("uInc"),
@@ -82,7 +94,7 @@ class LancamentosCCExtractor(BaseExtractor):
                 info.get("hAlt"),
                 info.get("uAlt"),
                 info.get("cImpAPI"),
-                transferencia.get("nCodCCDestino"),
+                int_or_none(transferencia.get("nCodCCDestino")),
                 json.dumps(distribuicao_list) if distribuicao_list else None,
                 json.dumps(categorias_list) if categorias_list else None
             ))
@@ -109,6 +121,9 @@ class LancamentosCCExtractor(BaseExtractor):
                     dep.get("nPerDep"),
                     dep.get("nValDep")
                 ))
+
+        if not db_cc_rows:
+            return 0
 
         query_cc = """
             INSERT INTO staging.stg_fato_lancamentos_cc (

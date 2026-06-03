@@ -1,6 +1,8 @@
 import time
 import httpx
 import logging
+import truststore
+truststore.inject_into_ssl()
 
 logger = logging.getLogger("OmieClient")
 
@@ -81,20 +83,24 @@ class OmieClient:
 
         raise Exception(f"Falha na requisição {call_name} após {max_retries} tentativas.")
 
-    def fetch_paginated(self, endpoint: str, call_name: str, list_key: str, registros_por_pagina: int = 50) -> list:
+    def fetch_paginated(self, endpoint: str, call_name: str, list_key: str, registros_por_pagina: int = 50, extra_params: dict = None, size_param_name: str = "registros_por_pagina", page_param_name: str = "pagina") -> list:
         """Itera por todas as páginas da API e consolida os dados em uma lista única."""
         all_records = []
         page = 1
-        
+
+        # Parâmetros extras padrões
+        if extra_params is None:
+            extra_params = {"apenas_importado_api": "N"}
+
         while True:
             params = {
-                "pagina": page,
-                "registros_por_pagina": registros_por_pagina,
-                "apenas_importado_api": "N"
+                page_param_name: page,
+                size_param_name: registros_por_pagina
             }
-            
+            params.update(extra_params)
+
             logger.info(f"Baixando {call_name} - Página {page}...")
-            
+
             try:
                 result = self._post(endpoint, call_name, params)
             except OmieAPIError as e:
@@ -107,7 +113,7 @@ class OmieClient:
 
             # Obtém a lista de registros
             records = result.get(list_key)
-            
+
             # Se for dicionário com sub-registros, extrai valores
             if isinstance(records, dict):
                 records = list(records.values())
@@ -116,15 +122,15 @@ class OmieClient:
             if not records:
                 logger.info(f"Nenhum registro retornado em {call_name} - Página {page}. Finalizando paginação.")
                 break
-                
+
             all_records.extend(records)
-            
-            # Verifica se o número total de páginas foi atingido (alguns endpoints retornam total_de_paginas)
-            total_paginas = result.get("total_de_paginas")
+
+            # Verifica total de páginas — suporta tanto "total_de_paginas" quanto "nTotPaginas"
+            total_paginas = result.get("total_de_paginas") or result.get("nTotPaginas")
             if total_paginas and page >= int(total_paginas):
                 logger.info(f"Atingido o total de páginas ({total_paginas}) de {call_name}. Finalizando paginação.")
                 break
-                
+
             page += 1
-            
+
         return all_records

@@ -3,6 +3,14 @@ from datetime import datetime
 from psycopg2.extras import execute_values
 from extractors.base import BaseExtractor
 
+def int_or_none(val):
+    if val is None or val == "":
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
 def parse_timestamp(dt_str):
     if not dt_str:
         return None
@@ -52,9 +60,9 @@ class ContasReceberExtractor(BaseExtractor):
                 record.get("codigo_tipo_documento"),
                 record.get("numero_documento"),
                 record.get("numero_documento_fiscal"),
-                record.get("codigo_cliente_fornecedor"),
+                int_or_none(record.get("codigo_cliente_fornecedor")),
                 record.get("codigo_categoria"),
-                record.get("id_conta_corrente"),
+                int_or_none(record.get("id_conta_corrente")),
                 record.get("codigo_barras_ficha_compensacao"),
                 record.get("retem_pis"),
                 record.get("retem_cofins"),
@@ -99,6 +107,9 @@ class ContasReceberExtractor(BaseExtractor):
                     dep.get("nperdep"),
                     dep.get("nvaldep")
                 ))
+
+        if not db_receber_rows:
+            return 0
 
         # 1. Inserção na Pai
         query_receber = """
