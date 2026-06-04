@@ -14,7 +14,6 @@ def int_or_none(val):
 def parse_timestamp(dt_str):
     if not dt_str:
         return None
-    # Formatos comuns da API Omie para data/hora
     for fmt in ('%d/%m/%Y %H:%M:%S', '%d/%m/%Y', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d'):
         try:
             return datetime.strptime(dt_str, fmt)
@@ -23,28 +22,23 @@ def parse_timestamp(dt_str):
     return dt_str
 
 class ContasReceberExtractor(BaseExtractor):
-    def fetch(self) -> list:
+    def fetch(self, filtro: dict = None) -> list:
+        extra_params = {"apenas_importado_api": "N"}
+        if filtro and "registro_de" in filtro:
+            extra_params["filtrar_por_registro_de"] = filtro["registro_de"]
         return self.client.fetch_paginated(
             endpoint="financas/contareceber",
             call_name="ListarContasReceber",
-            list_key="conta_receber_cadastro"
+            list_key="conta_receber_cadastro",
+            extra_params=extra_params
         )
 
-    def clean_staging(self, cursor):
-        cursor.execute("DELETE FROM staging.stg_fato_contas_receber_categorias WHERE id_empresa = %s", (self.company_id,))
-        cursor.execute("DELETE FROM staging.stg_fato_contas_receber_departamentos WHERE id_empresa = %s", (self.company_id,))
-        cursor.execute("DELETE FROM staging.stg_fato_contas_receber WHERE id_empresa = %s", (self.company_id,))
-
-    def save(self, cursor, raw_records: list) -> int:
-        if not raw_records:
-            return 0
-
+    def _build_rows(self, raw_records):
         db_receber_rows = []
         db_categorias_rows = []
         db_departamentos_rows = []
 
         for record in raw_records:
-            # Filtro de chave natural nula (idêntico ao FilterRows do Hop)
             codigo_lancamento_omie = record.get("codigo_lancamento_omie")
             if not codigo_lancamento_omie:
                 continue
@@ -108,11 +102,43 @@ class ContasReceberExtractor(BaseExtractor):
                     dep.get("nvaldep")
                 ))
 
+        return db_receber_rows, db_categorias_rows, db_departamentos_rows
+
+    def clean_staging(self, cursor):
+        cursor.execute("DELETE FROM staging.stg_fato_contas_receber_categorias WHERE id_empresa = %s", (self.company_id,))
+        cursor.execute("DELETE FROM staging.stg_fato_contas_receber_departamentos WHERE id_empresa = %s", (self.company_id,))
+        cursor.execute("DELETE FROM staging.stg_fato_contas_receber WHERE id_empresa = %s", (self.company_id,))
+
+    def save(self, cursor, raw_records: list) -> int:
+        if not raw_records:
+            return 0
+        db_receber_rows, db_categorias_rows, db_departamentos_rows = self._build_rows(raw_records)
+        if not db_receber_rows:
+            return 0
+        self._insert_pai(cursor, db_receber_rows)
+        self._insert_filhas(cursor, db_categorias_rows, db_departamentos_rows)
+        return len(db_receber_rows)
+
+    def upsert(self, cursor, raw_records: list) -> int:
+        """UPSERT incremental: atualiza registros existentes e insere novos.
+        Filhas (categorias/departamentos) são apagadas e reinseridas por lançamento."""
+        if not raw_records:
+            return 0
+        db_receber_rows, db_categorias_rows, db_departamentos_rows = self._build_rows(raw_records)
         if not db_receber_rows:
             return 0
 
-        # 1. Inserção na Pai
-        query_receber = """
+        codigos = [row[1] for row in db_receber_rows]
+        cursor.execute(
+            "DELETE FROM staging.stg_fato_contas_receber_categorias WHERE id_empresa = %s AND codigo_lancamento_omie = ANY(%s)",
+            (self.company_id, codigos)
+        )
+        cursor.execute(
+            "DELETE FROM staging.stg_fato_contas_receber_departamentos WHERE id_empresa = %s AND codigo_lancamento_omie = ANY(%s)",
+            (self.company_id, codigos)
+        )
+
+        query_upsert = """
             INSERT INTO staging.stg_fato_contas_receber (
                 id_empresa, codigo_lancamento_omie, codigo_lancamento_integracao,
                 codigo_tipo_documento, numero_documento, numero_documento_fiscal,
@@ -123,25 +149,69 @@ class ContasReceberExtractor(BaseExtractor):
                 tipo_agrupamento, id_origem, cimpapi, dinc, hinc, uinc, dalt,
                 halt, ualt, json_categorias, json_distribuicao
             ) VALUES %s
+            ON CONFLICT (id_empresa, codigo_lancamento_omie) DO UPDATE SET
+                codigo_lancamento_integracao    = EXCLUDED.codigo_lancamento_integracao,
+                codigo_tipo_documento           = EXCLUDED.codigo_tipo_documento,
+                numero_documento                = EXCLUDED.numero_documento,
+                numero_documento_fiscal         = EXCLUDED.numero_documento_fiscal,
+                codigo_cliente_fornecedor       = EXCLUDED.codigo_cliente_fornecedor,
+                codigo_categoria                = EXCLUDED.codigo_categoria,
+                id_conta_corrente               = EXCLUDED.id_conta_corrente,
+                codigo_barras_ficha_compensacao = EXCLUDED.codigo_barras_ficha_compensacao,
+                retem_pis                       = EXCLUDED.retem_pis,
+                retem_cofins                    = EXCLUDED.retem_cofins,
+                retem_csll                      = EXCLUDED.retem_csll,
+                retem_ir                        = EXCLUDED.retem_ir,
+                retem_iss                       = EXCLUDED.retem_iss,
+                retem_inss                      = EXCLUDED.retem_inss,
+                data_vencimento                 = EXCLUDED.data_vencimento,
+                data_emissao                    = EXCLUDED.data_emissao,
+                data_previsao                   = EXCLUDED.data_previsao,
+                data_registro                   = EXCLUDED.data_registro,
+                valor_documento                 = EXCLUDED.valor_documento,
+                status_titulo                   = EXCLUDED.status_titulo,
+                tipo_agrupamento                = EXCLUDED.tipo_agrupamento,
+                id_origem                       = EXCLUDED.id_origem,
+                cimpapi                         = EXCLUDED.cimpapi,
+                dinc                            = EXCLUDED.dinc,
+                hinc                            = EXCLUDED.hinc,
+                uinc                            = EXCLUDED.uinc,
+                dalt                            = EXCLUDED.dalt,
+                halt                            = EXCLUDED.halt,
+                ualt                            = EXCLUDED.ualt,
+                json_categorias                 = EXCLUDED.json_categorias,
+                json_distribuicao               = EXCLUDED.json_distribuicao,
+                dt_extracao                     = NOW()
         """
-        execute_values(cursor, query_receber, db_receber_rows)
+        execute_values(cursor, query_upsert, db_receber_rows)
+        self._insert_filhas(cursor, db_categorias_rows, db_departamentos_rows)
+        return len(db_receber_rows)
 
-        # 2. Categorias
+    def _insert_pai(self, cursor, db_receber_rows):
+        execute_values(cursor, """
+            INSERT INTO staging.stg_fato_contas_receber (
+                id_empresa, codigo_lancamento_omie, codigo_lancamento_integracao,
+                codigo_tipo_documento, numero_documento, numero_documento_fiscal,
+                codigo_cliente_fornecedor, codigo_categoria, id_conta_corrente,
+                codigo_barras_ficha_compensacao, retem_pis, retem_cofins, retem_csll,
+                retem_ir, retem_iss, retem_inss, data_vencimento, data_emissao,
+                data_previsao, data_registro, valor_documento, status_titulo,
+                tipo_agrupamento, id_origem, cimpapi, dinc, hinc, uinc, dalt,
+                halt, ualt, json_categorias, json_distribuicao
+            ) VALUES %s
+        """, db_receber_rows)
+
+    def _insert_filhas(self, cursor, db_categorias_rows, db_departamentos_rows):
         if db_categorias_rows:
-            query_cat = """
+            execute_values(cursor, """
                 INSERT INTO staging.stg_fato_contas_receber_categorias (
                     id_empresa, codigo_lancamento_omie, codigo_categoria, percentual, valor
                 ) VALUES %s
-            """
-            execute_values(cursor, query_cat, db_categorias_rows)
+            """, db_categorias_rows)
 
-        # 3. Departamentos
         if db_departamentos_rows:
-            query_dep = """
+            execute_values(cursor, """
                 INSERT INTO staging.stg_fato_contas_receber_departamentos (
                     id_empresa, codigo_lancamento_omie, ccoddep, cdesdep, nperdep, nvaldep
                 ) VALUES %s
-            """
-            execute_values(cursor, query_dep, db_departamentos_rows)
-
-        return len(db_receber_rows)
+            """, db_departamentos_rows)

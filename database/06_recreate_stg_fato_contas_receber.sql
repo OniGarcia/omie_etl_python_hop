@@ -59,4 +59,6 @@ CREATE TABLE staging.stg_fato_contas_receber (
 CREATE INDEX idx_stg_cr_empresa    ON staging.stg_fato_contas_receber(id_empresa);
 CREATE INDEX idx_stg_cr_vencimento ON staging.stg_fato_contas_receber(data_vencimento);
 CREATE INDEX idx_stg_cr_status     ON staging.stg_fato_contas_receber(status_titulo);
-CREATE INDEX idx_stg_cr_cod_omie   ON staging.stg_fato_contas_receber(codigo_lancamento_omie);
+-- Chave natural: habilita UPSERT (ON CONFLICT) no modo incremental
+ALTER TABLE staging.stg_fato_contas_receber
+    ADD CONSTRAINT uq_stg_cr_empresa_lanc UNIQUE (id_empresa, codigo_lancamento_omie);

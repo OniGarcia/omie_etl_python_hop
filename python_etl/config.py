@@ -16,6 +16,12 @@ class Config:
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
     CONCURRENCY_LIMIT = int(os.getenv("CONCURRENCY_LIMIT", "3"))
 
+    # Configurações de carga incremental (CDC)
+    # Overlap de dias ao montar o filtro incremental de CP/CR (compensa alterações tardias no Omie)
+    INCREMENTAL_OVERLAP_DAYS = int(os.getenv("INCREMENTAL_OVERLAP_DAYS", "7"))
+    # Janela de dias para extração de lançamentos CC no modo incremental
+    CC_WINDOW_DAYS = int(os.getenv("CC_WINDOW_DAYS", "90"))
+
     @classmethod
     def get_db_dsn(cls) -> str:
         """Retorna a string de conexão (DSN) para o PostgreSQL."""

@@ -50,7 +50,9 @@ CREATE TABLE staging.stg_fato_lancamentos_cc (
 CREATE INDEX idx_stg_lcc_empresa  ON staging.stg_fato_lancamentos_cc(id_empresa);
 CREATE INDEX idx_stg_lcc_data     ON staging.stg_fato_lancamentos_cc(ddtlanc);
 CREATE INDEX idx_stg_lcc_cc       ON staging.stg_fato_lancamentos_cc(ncodcc);
-CREATE INDEX idx_stg_lcc_lancamento ON staging.stg_fato_lancamentos_cc(ncodlanc);
+-- Chave natural: habilita UPSERT (ON CONFLICT) no modo incremental
+ALTER TABLE staging.stg_fato_lancamentos_cc
+    ADD CONSTRAINT uq_stg_lcc_empresa_lanc UNIQUE (id_empresa, ncodlanc);
 
 -- Categorias dos lançamentos CC (1:N)
 CREATE TABLE staging.stg_fato_lancamentos_cc_categorias (

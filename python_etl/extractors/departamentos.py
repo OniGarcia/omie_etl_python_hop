@@ -2,7 +2,7 @@ from psycopg2.extras import execute_values
 from extractors.base import BaseExtractor
 
 class DepartamentosExtractor(BaseExtractor):
-    def fetch(self) -> list:
+    def fetch(self, filtro: dict = None) -> list:
         return self.client.fetch_paginated(
             endpoint="geral/departamentos",
             call_name="ListarDepartamentos",

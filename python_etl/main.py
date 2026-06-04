@@ -38,19 +38,26 @@ def main():
         type=int,
         help="Executa o ETL apenas para uma empresa específica pelo ID de cadastro."
     )
-    
+    parser.add_argument(
+        "--modo",
+        choices=["incremental", "full"],
+        default="incremental",
+        help="Modo de carga: 'incremental' (padrão, só o que mudou) ou 'full' (reconciliação completa)."
+    )
+
     args = parser.parse_args()
-    
+
     setup_logging()
     logger = logging.getLogger("ETLMain")
-    
+
     logger.info("=====================================================================")
     logger.info("Iniciando Orquestrador ETL Omie em Python")
+    logger.info(f"Modo de Carga: {args.modo.upper()}")
     logger.info(f"Modo Dry Run: {args.dry_run}")
     if args.company_id:
         logger.info(f"Executando apenas para empresa ID: {args.company_id}")
     logger.info("=====================================================================")
-    
+
     try:
         if args.company_id:
             # Executa apenas para uma empresa específica
@@ -64,18 +71,19 @@ def main():
                     if not row:
                         logger.error(f"Empresa com ID {args.company_id} não encontrada no banco.")
                         sys.exit(1)
-                    
+
                     company_name, app_key, app_secret = row
-                
+
                 executar_etl_empresa(
                     conn=conn,
                     company_id=args.company_id,
                     company_name=company_name,
                     app_key=app_key,
                     app_secret=app_secret,
-                    dry_run=args.dry_run
+                    dry_run=args.dry_run,
+                    modo=args.modo
                 )
-                
+
                 # Executa o DW para a empresa piloto (se não for dry-run)
                 if not args.dry_run:
                     logger.info("Iniciando processamento DW...")
@@ -85,7 +93,7 @@ def main():
                     logger.info("DW atualizado com sucesso!")
         else:
             # Executa o lote completo (todas as empresas ativas)
-            rodar_lote_completo(dry_run=args.dry_run)
+            rodar_lote_completo(dry_run=args.dry_run, modo=args.modo)
             
         logger.info("Processo finalizado com sucesso!")
         sys.exit(0)

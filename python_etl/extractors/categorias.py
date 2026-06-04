@@ -11,7 +11,7 @@ def int_or_none(val):
         return None
 
 class CategoriasExtractor(BaseExtractor):
-    def fetch(self) -> list:
+    def fetch(self, filtro: dict = None) -> list:
         return self.client.fetch_paginated(
             endpoint="geral/categorias",
             call_name="ListarCategorias",

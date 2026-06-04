@@ -22,32 +22,30 @@ def parse_timestamp(dt_str):
     return dt_str
 
 class LancamentosCCExtractor(BaseExtractor):
-    def fetch(self) -> list:
+    def fetch(self, filtro: dict = None) -> list:
+        extra_params = {}
+        if filtro and "data_de" in filtro:
+            # Filtro de janela por data do lançamento (modo incremental)
+            # ATENÇÃO: confirmar no portal Omie se "filtrar_por_data_de" é o parâmetro
+            # correto para ListarLancCC. Caso a API retorne erro, remover este bloco
+            # e o CC sempre fará full reload (seguro, pois o UPSERT é idempotente).
+            extra_params["filtrar_por_data_de"] = filtro["data_de"]
         return self.client.fetch_paginated(
             endpoint="financas/contacorrentelancamentos",
             call_name="ListarLancCC",
             list_key="listaLancamentos",
             registros_por_pagina=20,
-            extra_params={},
+            extra_params=extra_params,
             size_param_name="nRegPorPagina",
             page_param_name="nPagina"
         )
 
-    def clean_staging(self, cursor):
-        cursor.execute("DELETE FROM staging.stg_fato_lancamentos_cc_categorias WHERE id_empresa = %s", (self.company_id,))
-        cursor.execute("DELETE FROM staging.stg_fato_lancamentos_cc_departamentos WHERE id_empresa = %s", (self.company_id,))
-        cursor.execute("DELETE FROM staging.stg_fato_lancamentos_cc WHERE id_empresa = %s", (self.company_id,))
-
-    def save(self, cursor, raw_records: list) -> int:
-        if not raw_records:
-            return 0
-
+    def _build_rows(self, raw_records):
         db_cc_rows = []
         db_categorias_rows = []
         db_departamentos_rows = []
 
         for record in raw_records:
-            # Filtro de chave natural nula (FilterRows)
             ncodlanc = record.get("nCodLanc")
             if not ncodlanc:
                 continue
@@ -58,8 +56,6 @@ class LancamentosCCExtractor(BaseExtractor):
             info = record.get("info", {})
             transferencia = record.get("transferencia", {})
 
-            # No JSON do Omie, categorias de CC vêm sob detalhes.aCodCateg
-            # e a distribuição vem sob listaLancamentos[*].departamentos
             categorias_list = detalhes.get("aCodCateg", [])
             distribuicao_list = record.get("departamentos", [])
 
@@ -99,8 +95,6 @@ class LancamentosCCExtractor(BaseExtractor):
                 json.dumps(categorias_list) if categorias_list else None
             ))
 
-            # Categorias do rateio (ProcessarCategoriasCC)
-            # Chaves esperadas: cCodCateg, nPercCateg, nValor
             for cat in categorias_list:
                 db_categorias_rows.append((
                     self.company_id,
@@ -110,8 +104,6 @@ class LancamentosCCExtractor(BaseExtractor):
                     cat.get("nValor")
                 ))
 
-            # Departamentos do rateio (ProcessarDistribuicaoCC)
-            # Chaves esperadas: cCodDep, cDesDep, nPerDep, nValDep
             for dep in distribuicao_list:
                 db_departamentos_rows.append((
                     self.company_id,
@@ -122,10 +114,42 @@ class LancamentosCCExtractor(BaseExtractor):
                     dep.get("nValDep")
                 ))
 
+        return db_cc_rows, db_categorias_rows, db_departamentos_rows
+
+    def clean_staging(self, cursor):
+        cursor.execute("DELETE FROM staging.stg_fato_lancamentos_cc_categorias WHERE id_empresa = %s", (self.company_id,))
+        cursor.execute("DELETE FROM staging.stg_fato_lancamentos_cc_departamentos WHERE id_empresa = %s", (self.company_id,))
+        cursor.execute("DELETE FROM staging.stg_fato_lancamentos_cc WHERE id_empresa = %s", (self.company_id,))
+
+    def save(self, cursor, raw_records: list) -> int:
+        if not raw_records:
+            return 0
+        db_cc_rows, db_categorias_rows, db_departamentos_rows = self._build_rows(raw_records)
+        if not db_cc_rows:
+            return 0
+        self._insert_pai(cursor, db_cc_rows)
+        self._insert_filhas(cursor, db_categorias_rows, db_departamentos_rows)
+        return len(db_cc_rows)
+
+    def upsert(self, cursor, raw_records: list) -> int:
+        """UPSERT incremental por janela de data. Idempotente por (id_empresa, ncodlanc)."""
+        if not raw_records:
+            return 0
+        db_cc_rows, db_categorias_rows, db_departamentos_rows = self._build_rows(raw_records)
         if not db_cc_rows:
             return 0
 
-        query_cc = """
+        codigos = [row[1] for row in db_cc_rows]
+        cursor.execute(
+            "DELETE FROM staging.stg_fato_lancamentos_cc_categorias WHERE id_empresa = %s AND ncodlanc = ANY(%s)",
+            (self.company_id, codigos)
+        )
+        cursor.execute(
+            "DELETE FROM staging.stg_fato_lancamentos_cc_departamentos WHERE id_empresa = %s AND ncodlanc = ANY(%s)",
+            (self.company_id, codigos)
+        )
+
+        query_upsert = """
             INSERT INTO staging.stg_fato_lancamentos_cc (
                 id_empresa, ncodlanc, ncodagrup, ccodintlanc, ddtlanc, ncodcc,
                 nvalorlanc, ccodcateg, cnumdoc, cobs, ctipo, ncodcliente, ncodprojeto,
@@ -134,23 +158,67 @@ class LancamentosCCExtractor(BaseExtractor):
                 uinc, dalt, halt, ualt, cimpapi, ncodccdestino, json_distribuicao,
                 json_categorias
             ) VALUES %s
+            ON CONFLICT (id_empresa, ncodlanc) DO UPDATE SET
+                ncodagrup       = EXCLUDED.ncodagrup,
+                ccodintlanc     = EXCLUDED.ccodintlanc,
+                ddtlanc         = EXCLUDED.ddtlanc,
+                ncodcc          = EXCLUDED.ncodcc,
+                nvalorlanc      = EXCLUDED.nvalorlanc,
+                ccodcateg       = EXCLUDED.ccodcateg,
+                cnumdoc         = EXCLUDED.cnumdoc,
+                cobs            = EXCLUDED.cobs,
+                ctipo           = EXCLUDED.ctipo,
+                ncodcliente     = EXCLUDED.ncodcliente,
+                ncodprojeto     = EXCLUDED.ncodprojeto,
+                cnatureza       = EXCLUDED.cnatureza,
+                corigem         = EXCLUDED.corigem,
+                ddtconc         = EXCLUDED.ddtconc,
+                chrconc         = EXCLUDED.chrconc,
+                cusconc         = EXCLUDED.cusconc,
+                cidentlanc      = EXCLUDED.cidentlanc,
+                ncodcomprador   = EXCLUDED.ncodcomprador,
+                ncodvendedor    = EXCLUDED.ncodvendedor,
+                ncodlanccr      = EXCLUDED.ncodlanccr,
+                ncodlanccp      = EXCLUDED.ncodlanccp,
+                dinc            = EXCLUDED.dinc,
+                hinc            = EXCLUDED.hinc,
+                uinc            = EXCLUDED.uinc,
+                dalt            = EXCLUDED.dalt,
+                halt            = EXCLUDED.halt,
+                ualt            = EXCLUDED.ualt,
+                cimpapi         = EXCLUDED.cimpapi,
+                ncodccdestino   = EXCLUDED.ncodccdestino,
+                json_distribuicao = EXCLUDED.json_distribuicao,
+                json_categorias = EXCLUDED.json_categorias,
+                dt_extracao     = NOW()
         """
-        execute_values(cursor, query_cc, db_cc_rows)
+        execute_values(cursor, query_upsert, db_cc_rows)
+        self._insert_filhas(cursor, db_categorias_rows, db_departamentos_rows)
+        return len(db_cc_rows)
 
+    def _insert_pai(self, cursor, db_cc_rows):
+        execute_values(cursor, """
+            INSERT INTO staging.stg_fato_lancamentos_cc (
+                id_empresa, ncodlanc, ncodagrup, ccodintlanc, ddtlanc, ncodcc,
+                nvalorlanc, ccodcateg, cnumdoc, cobs, ctipo, ncodcliente, ncodprojeto,
+                cnatureza, corigem, ddtconc, chrconc, cusconc, cidentlanc,
+                ncodcomprador, ncodvendedor, ncodlanccr, ncodlanccp, dinc, hinc,
+                uinc, dalt, halt, ualt, cimpapi, ncodccdestino, json_distribuicao,
+                json_categorias
+            ) VALUES %s
+        """, db_cc_rows)
+
+    def _insert_filhas(self, cursor, db_categorias_rows, db_departamentos_rows):
         if db_categorias_rows:
-            query_cat = """
+            execute_values(cursor, """
                 INSERT INTO staging.stg_fato_lancamentos_cc_categorias (
                     id_empresa, ncodlanc, ccodcategoria, npercentual, nvalor
                 ) VALUES %s
-            """
-            execute_values(cursor, query_cat, db_categorias_rows)
+            """, db_categorias_rows)
 
         if db_departamentos_rows:
-            query_dep = """
+            execute_values(cursor, """
                 INSERT INTO staging.stg_fato_lancamentos_cc_departamentos (
                     id_empresa, ncodlanc, ccoddep, cdesdep, nperdep, nvaldep
                 ) VALUES %s
-            """
-            execute_values(cursor, query_dep, db_departamentos_rows)
-
-        return len(db_cc_rows)
+            """, db_departamentos_rows)

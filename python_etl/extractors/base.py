@@ -7,18 +7,20 @@ class BaseExtractor(ABC):
         self.company_id = company_id
 
     @abstractmethod
-    def fetch(self) -> list:
-        """Coleta os dados do Omie API e retorna como lista de registros brutos em memória."""
+    def fetch(self, filtro: dict = None) -> list:
+        """Coleta dados da API Omie. filtro=None → carga full; dict com chaves de data → incremental."""
         pass
 
     @abstractmethod
     def clean_staging(self, cursor):
-        """Executa a query de DELETE para limpar os dados antigos desta empresa no staging."""
+        """DELETE completo dos dados desta empresa no staging (usado no full reload)."""
         pass
 
     @abstractmethod
     def save(self, cursor, raw_records: list) -> int:
-        """Mapeia os dados brutos e faz a inserção em lote (Bulk Insert) no banco de dados.
-        Retorna o número de registros inseridos.
-        """
+        """INSERT em lote no staging. Retorna número de registros inseridos."""
         pass
+
+    def upsert(self, cursor, raw_records: list) -> int:
+        """UPSERT incremental no staging. Implementado apenas nos extractors de tabelas fato."""
+        raise NotImplementedError(f"{self.__class__.__name__} não implementa upsert incremental.")
