@@ -25,11 +25,10 @@ class LancamentosCCExtractor(BaseExtractor):
     def fetch(self, filtro: dict = None) -> list:
         extra_params = {}
         if filtro and "data_de" in filtro:
-            # Filtro de janela por data do lançamento (modo incremental)
-            # ATENÇÃO: confirmar no portal Omie se "filtrar_por_data_de" é o parâmetro
-            # correto para ListarLancCC. Caso a API retorne erro, remover este bloco
-            # e o CC sempre fará full reload (seguro, pois o UPSERT é idempotente).
-            extra_params["filtrar_por_data_de"] = filtro["data_de"]
+            # Filtro incremental por DATA DE ALTERAÇÃO (dDtAltDe), conforme doc oficial do
+            # ListarLancCC. Captura lançamentos novos e editados na janela; o UPSERT é
+            # idempotente por (id_empresa, ncodlanc).
+            extra_params["dDtAltDe"] = filtro["data_de"]
         return self.client.fetch_paginated(
             endpoint="financas/contacorrentelancamentos",
             call_name="ListarLancCC",

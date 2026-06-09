@@ -52,6 +52,7 @@ LEFT JOIN LATERAL (
     ORDER  BY id
     LIMIT  1
 ) dep ON TRUE
+WHERE cp.excluido = FALSE
 
 UNION ALL
 
@@ -96,6 +97,7 @@ LEFT JOIN LATERAL (
     ORDER  BY id
     LIMIT  1
 ) dep ON TRUE
+WHERE cr.excluido = FALSE
 
 UNION ALL
 

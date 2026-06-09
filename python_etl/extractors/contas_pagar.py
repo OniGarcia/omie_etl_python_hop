@@ -190,11 +190,32 @@ class ContasPagarExtractor(BaseExtractor):
                 info_usuario_inclusao           = EXCLUDED.info_usuario_inclusao,
                 json_categorias                 = EXCLUDED.json_categorias,
                 json_distribuicao               = EXCLUDED.json_distribuicao,
+                excluido                        = FALSE,
+                data_exclusao                   = NULL,
                 dt_extracao                     = NOW()
         """
         execute_values(cursor, query_upsert, db_pagar_rows)
         self._insert_filhas(cursor, db_categorias_rows, db_departamentos_rows)
         return len(db_pagar_rows)
+
+    def reconcile(self, cursor, raw_records: list) -> int:
+        """Soft-delete: marca como excluído o que existe no staging mas NÃO veio do Omie.
+        Pressupõe que raw_records seja a lista COMPLETA atual da empresa (fetch full)."""
+        codigos = [r.get("codigo_lancamento_omie") for r in raw_records
+                   if r.get("codigo_lancamento_omie")]
+        if not codigos:
+            # Guarda de segurança: lista vazia (ex.: falha/empresa sem dados) NÃO marca tudo.
+            return 0
+        cursor.execute(
+            """
+            UPDATE staging.stg_fato_contas_pagar
+            SET excluido = TRUE, data_exclusao = NOW()
+            WHERE id_empresa = %s AND excluido = FALSE
+              AND NOT (codigo_lancamento_omie = ANY(%s))
+            """,
+            (self.company_id, codigos)
+        )
+        return cursor.rowcount
 
     def _insert_pai(self, cursor, db_pagar_rows):
         query = """

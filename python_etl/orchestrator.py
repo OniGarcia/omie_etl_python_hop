@@ -9,6 +9,11 @@ logger = logging.getLogger("ETLOrchestrator")
 
 FATO_ENTIDADES = set(FATO_MAPPING.keys())
 
+# Entidades que refletem exclusões físicas do Omie via soft delete.
+# Para detectar exclusão é necessária a lista COMPLETA atual do Omie (o registro
+# excluído some da API), por isso essas entidades fazem fetch full a cada run.
+RECONCILE_ENTIDADES = {"contas_pagar", "contas_receber"}
+
 
 # =============================================================================
 # Funções de auditoria (config.etl_execucao)
@@ -77,6 +82,8 @@ def _construir_filtros(watermarks: dict, modo: str) -> dict:
     today = date.today()
     filtros = {}
     for name in FATO_ENTIDADES:
+        if name in RECONCILE_ENTIDADES:
+            continue  # fetch full a cada run para permitir reconciliação de exclusões
         wm = watermarks.get(name)
         if wm is None:
             continue  # sem watermark = full reload para esta entidade
@@ -138,8 +145,14 @@ def executar_etl_empresa(conn, company_id: int, company_name: str, app_key: str,
         with get_db_transaction(conn):
             with conn.cursor() as cursor:
                 for name, (extractor, records, filtro) in all_extracted_data.items():
+                    reconcilia = (name in RECONCILE_ENTIDADES and modo == "incremental")
                     usar_upsert = (name in FATO_ENTIDADES and filtro is not None and modo == "incremental")
-                    if usar_upsert:
+                    if reconcilia:
+                        logger.info(f"[{company_name}] UPSERT + reconciliação de exclusões para {name}...")
+                        rows = extractor.upsert(cursor, records)
+                        n_exc = extractor.reconcile(cursor, records)
+                        logger.info(f"[{company_name}] {name}: {n_exc} registros marcados como excluídos.")
+                    elif usar_upsert:
                         logger.info(f"[{company_name}] UPSERT incremental para {name}...")
                         rows = extractor.upsert(cursor, records)
                     else:
