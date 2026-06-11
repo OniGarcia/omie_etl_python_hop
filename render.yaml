@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: omie-etl-dashboard
+    env: python
+    rootDir: python_etl
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DB_HOST
+        value: db.jcposydvpilkvszbjxlo.supabase.co
+        sync: false
+      - key: DB_PORT
+        value: "5432"
+        sync: false
+      - key: DB_NAME
+        value: postgres
+        sync: false
+      - key: DB_USER
+        value: postgres
+        sync: false
+      - key: DB_PASSWORD
+        value: au7B3wYEeT8bxgPy
+        sync: false
+      - key: ETL_API_KEY
+        value: bi_omie_2026_secret
+        sync: false
+      - key: LOG_LEVEL
+        value: INFO
+        sync: false
+      - key: CONCURRENCY_LIMIT
+        value: "3"
+        sync: false
