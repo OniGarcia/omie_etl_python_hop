@@ -14,10 +14,11 @@ services:
         value: postgres
       - key: DB_USER
         value: postgres
+      # Segredos: NAO versionar valor. Definir no painel do Render (Environment).
       - key: DB_PASSWORD
-        value: au7B3wYEeT8bxgPy
+        sync: false
       - key: ETL_API_KEY
-        value: bi_omie_2026_secret
+        sync: false
       - key: LOG_LEVEL
         value: INFO
       - key: CONCURRENCY_LIMIT

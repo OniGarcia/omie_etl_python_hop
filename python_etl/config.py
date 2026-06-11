@@ -10,7 +10,8 @@ class Config:
     DB_PORT = int(os.getenv("DB_PORT", "5432"))
     DB_NAME = os.getenv("DB_NAME", "postgres")
     DB_USER = os.getenv("DB_USER", "postgres")
-    DB_PASSWORD = os.getenv("DB_PASSWORD", "au7B3wYEeT8bxgPy")
+    # Segredo: sem default. Definir via .env (local) ou Environment do Render.
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
     # Configurações do Script
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()

@@ -21,8 +21,15 @@ logger = logging.getLogger("ETLWebApp")
 
 app = FastAPI(title="Painel de Controle - OMIE ETL 2026")
 
-# Chave de segurança para controle de chamadas externas da API
-ADMIN_API_KEY = os.getenv("ETL_API_KEY", "bi_omie_2026_secret")
+# Chave de segurança para controle de chamadas externas da API.
+# Sem valor padrão: se ETL_API_KEY não estiver definida no ambiente (Render),
+# o disparo de ETL fica bloqueado por padrão (fail-closed).
+ADMIN_API_KEY = os.getenv("ETL_API_KEY")
+if not ADMIN_API_KEY:
+    logger.warning(
+        "ETL_API_KEY não configurada. O endpoint /api/run permanecerá bloqueado "
+        "até que a variável seja definida no ambiente."
+    )
 
 # Estado da Execução em Memória
 class ETLState:
@@ -37,9 +44,12 @@ class ETLState:
 
 state = ETLState()
 
+# Protege o guard de concorrência do endpoint /api/run contra TOCTOU.
+_run_lock = threading.Lock()
+
 def run_etl_worker(modo: str):
     global state
-    state.running = True
+    # state.running já foi marcado como True (sob _run_lock) pelo endpoint /api/run.
     state.last_status = "EXECUTANDO"
     state.mode = modo
     start_time = time.time()
@@ -441,7 +451,7 @@ def get_dashboard():
                         </div>
                         <div class="form-group">
                             <label for="api-key">Chave de API do ETL (Render)</label>
-                            <input type="password" id="api-key" placeholder="Insira a chave ETL_API_KEY para rodar" value="bi_omie_2026_secret">
+                            <input type="password" id="api-key" placeholder="Insira a chave ETL_API_KEY para rodar">
                         </div>
                         <button id="btn-run" class="btn" onclick="triggerETL()">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
@@ -771,17 +781,24 @@ def trigger_etl_endpoint(
     modo: str = "incremental",
     x_api_key: str = Header(None)
 ):
-    # Valida chaves
-    if ADMIN_API_KEY and x_api_key != ADMIN_API_KEY:
+    # Fail-closed: sem chave configurada no servidor, ninguém dispara o ETL
+    if not ADMIN_API_KEY:
+        raise HTTPException(status_code=503, detail="ETL_API_KEY não configurada no servidor.")
+
+    if x_api_key != ADMIN_API_KEY:
         raise HTTPException(status_code=401, detail="Não autorizado: Chave de API inválida.")
-        
-    if state.running:
-        raise HTTPException(status_code=409, detail="ETL já está em execução no momento.")
-        
+
     if modo not in ("incremental", "full"):
         raise HTTPException(status_code=400, detail="Modo de extração inválido. Escolha 'incremental' ou 'full'.")
 
-    # Inicia a thread background
+    # Guard de concorrência atômico: marca running de forma síncrona, ANTES de
+    # agendar a task, para evitar TOCTOU entre dois POST simultâneos.
+    with _run_lock:
+        if state.running:
+            raise HTTPException(status_code=409, detail="ETL já está em execução no momento.")
+        state.running = True
+
+    # Inicia a execução em segundo plano
     background_tasks.add_task(run_etl_worker, modo)
     
     return {"status": "iniciado", "mensagem": f"Processo do ETL em lote iniciado em segundo plano ({modo})."}
