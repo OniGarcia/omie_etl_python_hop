@@ -4,7 +4,8 @@ import time
 import datetime
 import logging
 import threading
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Depends
+from typing import List, Optional
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
 # Certifica-se de que a pasta atual está no PYTHONPATH para importar localmente
@@ -47,18 +48,18 @@ state = ETLState()
 # Protege o guard de concorrência do endpoint /api/run contra TOCTOU.
 _run_lock = threading.Lock()
 
-def run_etl_worker(modo: str):
+def run_etl_worker(modo: str, empresa_ids: Optional[List[int]] = None):
     global state
     # state.running já foi marcado como True (sob _run_lock) pelo endpoint /api/run.
     state.last_status = "EXECUTANDO"
     state.mode = modo
     start_time = time.time()
-    
-    logger.info(f"[API Web] Disparando execução de ETL em segundo plano. Modo: {modo}")
-    
+
+    desc = f"empresas={empresa_ids}" if empresa_ids else "todas as empresas"
+    logger.info(f"[API Web] Disparando execução de ETL em segundo plano. Modo: {modo} | Escopo: {desc}")
+
     try:
-        # Executa o lote completo (todas as empresas ativas no banco)
-        rodar_lote_completo(dry_run=False, modo=modo)
+        rodar_lote_completo(dry_run=False, modo=modo, empresa_ids=empresa_ids or None)
         
         # Após conclusão com sucesso, atualiza o status em memória buscando o log do banco
         try:
@@ -450,6 +451,15 @@ def get_dashboard():
                             </select>
                         </div>
                         <div class="form-group">
+                            <label for="empresa-filter">Empresas</label>
+                            <div style="position: relative;">
+                                <select id="empresa-filter" multiple style="width:100%; min-height: 100px; padding: 0.5rem; background: #111827; border: 1px solid var(--border-color); color: white; border-radius: 8px; font-family: inherit; outline: none; transition: border-color 0.2s;">
+                                    <option value="" disabled>Carregando empresas...</option>
+                                </select>
+                                <p class="text-muted" style="margin-top: 0.35rem;">Segure Ctrl/Cmd para selecionar múltiplas. Sem seleção = todas as empresas ativas.</p>
+                            </div>
+                        </div>
+                        <div class="form-group">
                             <label for="api-key">Chave de API do ETL (Render)</label>
                             <input type="password" id="api-key" placeholder="Insira a chave ETL_API_KEY para rodar">
                         </div>
@@ -562,6 +572,24 @@ def get_dashboard():
         <script>
             let pollingInterval = null;
 
+            async function loadEmpresas() {{
+                try {{
+                    const res = await fetch("/api/empresas");
+                    if (!res.ok) return;
+                    const empresas = await res.json();
+                    const sel = document.getElementById("empresa-filter");
+                    sel.innerHTML = "";
+                    empresas.forEach(emp => {{
+                        const opt = document.createElement("option");
+                        opt.value = emp.id;
+                        opt.textContent = emp.nome;
+                        sel.appendChild(opt);
+                    }});
+                }} catch (e) {{
+                    console.error("Erro ao carregar empresas:", e);
+                }}
+            }}
+
             async function updateStatus() {{
                 try {{
                     const res = await fetch("/api/status");
@@ -667,13 +695,24 @@ def get_dashboard():
                 const mode = document.getElementById("etl-mode").value;
                 const apiKey = document.getElementById("api-key").value;
                 const btn = document.getElementById("btn-run");
-                
-                if (!confirm(`Deseja iniciar a execução do ETL Omie no modo [${{mode.toUpperCase()}}]?`)) return;
+
+                // Coleta empresas selecionadas
+                const sel = document.getElementById("empresa-filter");
+                const selectedIds = Array.from(sel.selectedOptions).map(o => o.value);
+                const empresaDesc = selectedIds.length === 0
+                    ? "TODAS as empresas ativas"
+                    : sel.selectedOptions.length + " empresa(s): " + Array.from(sel.selectedOptions).map(o => o.textContent).join(", ");
+
+                if (!confirm(`Deseja iniciar o ETL Omie?\n\nModo: ${{mode.toUpperCase()}}\nEscopos: ${{empresaDesc}}`)) return;
 
                 btn.disabled = true;
-                
+
+                // Monta a URL com os filtros de empresa (query params repetidos)
+                let url = `/api/run?modo=${{mode}}`;
+                selectedIds.forEach(id => {{ url += `&empresa_ids=${{id}}`; }});
+
                 try {{
-                    const res = await fetch(`/api/run?modo=${{mode}}`, {{
+                    const res = await fetch(url, {{
                         method: "POST",
                         headers: {{
                             "X-API-Key": apiKey
@@ -702,9 +741,9 @@ def get_dashboard():
 
             // Carregamento inicial
             window.onload = () => {{
+                loadEmpresas();
                 updateStatus();
                 fetchLogs();
-                // Scroll terminal to bottom initially
                 setTimeout(() => {{
                     const term = document.getElementById("terminal-body");
                     term.scrollTop = term.scrollHeight;
@@ -774,11 +813,29 @@ def get_status_endpoint():
         "history": history
     }
 
+# Endpoint: lista empresas ativas (para popular o select do dashboard)
+@app.get("/api/empresas")
+def get_empresas_endpoint():
+    empresas = []
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id, nome_empresa FROM config.empresas WHERE ativo = TRUE ORDER BY nome_empresa"
+                )
+                for r in cursor.fetchall():
+                    empresas.append({"id": r[0], "nome": r[1]})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar empresas: {e}")
+    return empresas
+
+
 # Endpoint: disparar execução do ETL
 @app.post("/api/run")
 def trigger_etl_endpoint(
     background_tasks: BackgroundTasks,
     modo: str = "incremental",
+    empresa_ids: Optional[List[int]] = Query(default=None),
     x_api_key: str = Header(None)
 ):
     # Fail-closed: sem chave configurada no servidor, ninguém dispara o ETL
@@ -799,9 +856,10 @@ def trigger_etl_endpoint(
         state.running = True
 
     # Inicia a execução em segundo plano
-    background_tasks.add_task(run_etl_worker, modo)
-    
-    return {"status": "iniciado", "mensagem": f"Processo do ETL em lote iniciado em segundo plano ({modo})."}
+    background_tasks.add_task(run_etl_worker, modo, empresa_ids if empresa_ids else None)
+
+    desc = f"empresas={empresa_ids}" if empresa_ids else "todas as empresas"
+    return {"status": "iniciado", "mensagem": f"Processo do ETL iniciado em segundo plano ({modo}) | {desc}."}
 
 # Para rodar localmente de forma simples se executado diretamente
 if __name__ == "__main__":
