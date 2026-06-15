@@ -2,8 +2,10 @@ import os
 import sys
 import time
 import datetime
+import calendar
 import logging
 import threading
+from collections import defaultdict
 from typing import List, Optional
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Header, Query
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -15,6 +17,7 @@ from config import Config
 from main import setup_logging
 from orchestrator import rodar_lote_completo
 from database import get_db_connection
+from dre_html import get_dre_html
 
 # Inicializa logs
 setup_logging()
@@ -429,9 +432,14 @@ def get_dashboard():
                     <h1>OMIE ETL Control Panel</h1>
                     <p>Orquestrador Integrado & Data Warehouse</p>
                 </div>
-                <div class="connection-status">
-                    <span id="conn-dot" class="status-dot"></span>
-                    <span id="conn-text">Banco: Conectado ({masked_host})</span>
+                <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                    <a href="/dre" style="display:inline-flex;align-items:center;gap:0.4rem;padding:0.5rem 1rem;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.3);border-radius:9999px;color:#a5b4fc;text-decoration:none;font-size:0.85rem;font-family:inherit;transition:all 0.2s;" onmouseover="this.style.background='rgba(99,102,241,0.2)'" onmouseout="this.style.background='rgba(99,102,241,0.12)'">
+                        DRE
+                    </a>
+                    <div class="connection-status">
+                        <span id="conn-dot" class="status-dot"></span>
+                        <span id="conn-text">Banco: Conectado ({masked_host})</span>
+                    </div>
                 </div>
             </header>
 
@@ -860,6 +868,247 @@ def trigger_etl_endpoint(
 
     desc = f"empresas={empresa_ids}" if empresa_ids else "todas as empresas"
     return {"status": "iniciado", "mensagem": f"Processo do ETL iniciado em segundo plano ({modo}) | {desc}."}
+
+# ── Tela DRE ────────────────────────────────────────────────────────────────
+
+@app.get("/dre", response_class=HTMLResponse)
+def get_dre_page():
+    return HTMLResponse(content=get_dre_html())
+
+
+@app.get("/api/departamentos")
+def get_departamentos_endpoint():
+    """Lista todos os centros de custo disponíveis no DW."""
+    resultado = []
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT cod_departamento, descricao
+                    FROM   dw.dim_departamento
+                    WHERE  descricao IS NOT NULL
+                    ORDER  BY descricao
+                    """
+                )
+                for r in cursor.fetchall():
+                    resultado.append({"codigo": r[0], "descricao": r[1]})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar departamentos: {e}")
+    return resultado
+
+
+@app.get("/api/dre")
+def get_dre_endpoint(
+    ano: int = Query(..., description="Ano do período (ex: 2026)"),
+    mes_ini: int = Query(..., ge=1, le=12, description="Mês inicial (1-12)"),
+    mes_fim: int = Query(..., ge=1, le=12, description="Mês final (1-12)"),
+    departamento: Optional[str] = Query(default=None, description="Código do departamento (Centro de Custo)"),
+):
+    """
+    Retorna os dados estruturados para o DRE mensal.
+    Hierarquia: grupo → categoria → entidade, com valores por mês.
+    """
+    if mes_ini > mes_fim:
+        raise HTTPException(status_code=400, detail="mes_ini não pode ser maior que mes_fim.")
+
+    # Chaves de data no formato YYYYMMDD (inteiro)
+    sk_ini = int(f"{ano}{mes_ini:02d}01")
+    ultimo_dia = calendar.monthrange(ano, mes_fim)[1]
+    sk_fim = int(f"{ano}{mes_fim:02d}{ultimo_dia:02d}")
+
+    # Lista de meses do período como strings "YYYYMM"
+    meses = []
+    for m in range(mes_ini, mes_fim + 1):
+        meses.append(f"{ano}{m:02d}")
+
+    depart_param = departamento if departamento else None
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+
+                # ── 1) Saldo Inicial acumulado ──
+                cursor.execute(
+                    """
+                    SELECT COALESCE(
+                        SUM(
+                            CASE WHEN f.natureza = 'C' THEN  f.valor_rateio
+                                 WHEN f.natureza = 'D' THEN -f.valor_rateio
+                            END
+                        ), 0
+                    ) AS saldo_inicial
+                    FROM dw.fact_movimento_financeiro f
+                    WHERE f.sk_data_pagamento < %(sk_ini)s
+                      AND f.is_transferencia = 'N'
+                      AND f.status_titulo IN ('LIQUIDADO', 'RECEBIDO', 'PAGO')
+                      AND (%(depart)s IS NULL OR f.cod_departamento = %(depart)s)
+                    """,
+                    {"sk_ini": sk_ini, "depart": depart_param}
+                )
+                saldo_acumulado = float(cursor.fetchone()[0] or 0)
+
+                # ── 2) Movimentos do período ──
+                cursor.execute(
+                    """
+                    SELECT
+                        f.natureza,
+                        COALESCE(
+                            (
+                                SELECT s_pai.descricao
+                                FROM   staging.stg_cad_categorias s_pai
+                                WHERE  s_pai.codigo     = s_filho.categoria_superior
+                                  AND  s_pai.id_empresa = f.id_empresa
+                                LIMIT  1
+                            ),
+                            c.tipo_categoria,
+                            c.descricao
+                        )                                           AS descricao_grupo,
+                        COALESCE(s_filho.categoria_superior, f.cod_categoria)
+                                                                    AS cod_grupo,
+                        f.cod_categoria,
+                        c.descricao                                 AS descricao_categoria,
+                        f.cod_entidade,
+                        COALESCE(e.nome_fantasia, e.razao_social, f.cod_entidade)
+                                                                    AS nome_entidade,
+                        (f.sk_data_pagamento / 100)::INTEGER        AS ano_mes,
+                        SUM(f.valor_rateio)                         AS total
+                    FROM dw.fact_movimento_financeiro f
+                    LEFT JOIN dw.dim_categoria c
+                           ON c.sk_categoria = f.sk_categoria
+                    LEFT JOIN dw.dim_entidade e
+                           ON e.sk_entidade = f.sk_entidade
+                    LEFT JOIN LATERAL (
+                        SELECT s.categoria_superior
+                        FROM   staging.stg_cad_categorias s
+                        WHERE  s.codigo     = f.cod_categoria
+                          AND  s.id_empresa = f.id_empresa
+                        LIMIT  1
+                    ) s_filho ON TRUE
+                    WHERE
+                        f.sk_data_pagamento BETWEEN %(sk_ini)s AND %(sk_fim)s
+                        AND f.is_transferencia = 'N'
+                        AND f.status_titulo IN ('LIQUIDADO', 'RECEBIDO', 'PAGO')
+                        AND (%(depart)s IS NULL OR f.cod_departamento = %(depart)s)
+                    GROUP BY
+                        f.natureza,
+                        s_filho.categoria_superior,
+                        c.tipo_categoria,
+                        c.descricao,
+                        f.cod_categoria,
+                        f.cod_entidade,
+                        e.nome_fantasia,
+                        e.razao_social,
+                        (f.sk_data_pagamento / 100)::INTEGER,
+                        f.id_empresa
+                    ORDER BY
+                        f.natureza DESC,
+                        cod_grupo,
+                        f.cod_categoria,
+                        ano_mes
+                    """,
+                    {"sk_ini": sk_ini, "sk_fim": sk_fim, "depart": depart_param}
+                )
+                rows = cursor.fetchall()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao consultar DRE: {e}")
+
+    # ── 3) Agrupamento em memória ──────────────────────────────────────────
+    # Estruturas intermediárias:
+    #   receitas_grupos[cod_grupo] = {descricao, valores: {yyyymm: total},
+    #                                 cats: {cod_cat: {descricao, valores, entidades}}}
+
+    def make_grupo():
+        return {"descricao": None, "valores": defaultdict(float),
+                "cats": defaultdict(lambda: {"descricao": None, "valores": defaultdict(float),
+                                             "entidades": defaultdict(lambda: {"nome": None, "valores": defaultdict(float)})})}
+
+    receitas_grupos = defaultdict(make_grupo)
+    despesas_grupos = defaultdict(make_grupo)
+    total_receitas = defaultdict(float)
+    total_despesas = defaultdict(float)
+
+    for row in rows:
+        (natureza, desc_grupo, cod_grupo, cod_cat, desc_cat,
+         cod_ent, nome_ent, ano_mes, total) = row
+        ano_mes_str = str(ano_mes)
+        total_f = float(total or 0)
+
+        bucket = receitas_grupos if natureza == 'C' else despesas_grupos
+        tot_bucket = total_receitas if natureza == 'C' else total_despesas
+
+        g = bucket[cod_grupo]
+        if g["descricao"] is None:
+            g["descricao"] = desc_grupo or cod_grupo or "Sem grupo"
+
+        g["valores"][ano_mes_str] += total_f
+        tot_bucket[ano_mes_str] += total_f
+
+        cat = g["cats"][cod_cat]
+        if cat["descricao"] is None:
+            cat["descricao"] = desc_cat or cod_cat or "Sem categoria"
+        cat["valores"][ano_mes_str] += total_f
+
+        if cod_ent:
+            ent = cat["entidades"][cod_ent]
+            if ent["nome"] is None:
+                ent["nome"] = nome_ent or cod_ent
+            ent["valores"][ano_mes_str] += total_f
+
+    def serializar_grupos(grupos_dict):
+        result = []
+        for cod_grupo, g in sorted(grupos_dict.items()):
+            cats = []
+            for cod_cat, cat in sorted(g["cats"].items()):
+                entidades = []
+                for cod_ent, ent in sorted(cat["entidades"].items()):
+                    entidades.append({
+                        "cod_entidade": cod_ent,
+                        "nome": ent["nome"],
+                        "valores": dict(ent["valores"]),
+                    })
+                cats.append({
+                    "cod_categoria": cod_cat,
+                    "descricao": cat["descricao"],
+                    "valores": dict(cat["valores"]),
+                    "entidades": entidades,
+                })
+            result.append({
+                "cod_grupo": cod_grupo,
+                "descricao": g["descricao"],
+                "valores": dict(g["valores"]),
+                "categorias": cats,
+            })
+        return result
+
+    # ── 4) Calcular saldo_inicial / variação / saldo_final por mês ────────
+    saldo_ini_por_mes = {}
+    variacoes = {}
+    saldo_final_por_mes = {}
+
+    saldo_corrente = saldo_acumulado
+    for m in meses:
+        rec = float(total_receitas.get(m, 0))
+        desp = float(total_despesas.get(m, 0))
+        variacao = rec - desp
+
+        saldo_ini_por_mes[m] = saldo_corrente
+        variacoes[m] = variacao
+        saldo_corrente += variacao
+        saldo_final_por_mes[m] = saldo_corrente
+
+    return {
+        "meses": meses,
+        "saldo_inicial": saldo_ini_por_mes,
+        "receitas": serializar_grupos(receitas_grupos),
+        "despesas": serializar_grupos(despesas_grupos),
+        "total_receitas": {k: float(v) for k, v in total_receitas.items()},
+        "total_despesas": {k: float(v) for k, v in total_despesas.items()},
+        "variacoes": variacoes,
+        "saldo_final": saldo_final_por_mes,
+    }
+
 
 # Para rodar localmente de forma simples se executado diretamente
 if __name__ == "__main__":
