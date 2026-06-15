@@ -904,6 +904,7 @@ def get_dre_endpoint(
     mes_ini: int = Query(..., ge=1, le=12, description="Mês inicial (1-12)"),
     mes_fim: int = Query(..., ge=1, le=12, description="Mês final (1-12)"),
     departamento: Optional[str] = Query(default=None, description="Código do departamento (Centro de Custo)"),
+    empresa_id: Optional[int] = Query(default=None, description="ID da empresa (None = todas)"),
 ):
     """
     Retorna os dados estruturados para o DRE mensal.
@@ -923,6 +924,7 @@ def get_dre_endpoint(
         meses.append(f"{ano}{m:02d}")
 
     depart_param = departamento if departamento else None
+    empresa_param = empresa_id if empresa_id else None
 
     try:
         with get_db_connection() as conn:
@@ -943,8 +945,9 @@ def get_dre_endpoint(
                       AND f.is_transferencia = 'N'
                       AND f.status_titulo IN ('LIQUIDADO', 'RECEBIDO', 'PAGO')
                       AND (%(depart)s IS NULL OR f.cod_departamento = %(depart)s)
+                      AND (%(empresa)s IS NULL OR f.id_empresa = %(empresa)s)
                     """,
-                    {"sk_ini": sk_ini, "depart": depart_param}
+                    {"sk_ini": sk_ini, "depart": depart_param, "empresa": empresa_param}
                 )
                 saldo_acumulado = float(cursor.fetchone()[0] or 0)
 
@@ -990,6 +993,7 @@ def get_dre_endpoint(
                         AND f.is_transferencia = 'N'
                         AND f.status_titulo IN ('LIQUIDADO', 'RECEBIDO', 'PAGO')
                         AND (%(depart)s IS NULL OR f.cod_departamento = %(depart)s)
+                        AND (%(empresa)s IS NULL OR f.id_empresa = %(empresa)s)
                     GROUP BY
                         f.natureza,
                         s_filho.categoria_superior,
@@ -1007,7 +1011,7 @@ def get_dre_endpoint(
                         f.cod_categoria,
                         ano_mes
                     """,
-                    {"sk_ini": sk_ini, "sk_fim": sk_fim, "depart": depart_param}
+                    {"sk_ini": sk_ini, "sk_fim": sk_fim, "depart": depart_param, "empresa": empresa_param}
                 )
                 rows = cursor.fetchall()
 

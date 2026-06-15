@@ -397,6 +397,12 @@ def get_dre_html() -> str:
             </select>
         </div>
         <div class="filter-group">
+            <label>Empresa</label>
+            <select id="filtro-empresa" style="min-width:200px;">
+                <option value="">Todas as empresas</option>
+            </select>
+        </div>
+        <div class="filter-group">
             <label>Centro de Custo</label>
             <select id="filtro-departamento" style="min-width:200px;">
                 <option value="">Todos os centros de custo</option>
@@ -469,6 +475,20 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('filtro-mes-ini').value = 1;
     document.getElementById('filtro-mes-fim').value = hoje.getMonth() + 1;
 
+    // Carrega empresas
+    try {
+        const emps = await fetch('/api/empresas').then(r => r.json());
+        const selEmp = document.getElementById('filtro-empresa');
+        emps.forEach(e => {
+            const opt = document.createElement('option');
+            opt.value = e.id;
+            opt.textContent = e.nome;
+            selEmp.appendChild(opt);
+        });
+    } catch (e) {
+        console.warn('Não foi possível carregar empresas:', e);
+    }
+
     // Carrega departamentos
     try {
         const deps = await fetch('/api/departamentos').then(r => r.json());
@@ -491,6 +511,7 @@ async function gerarDRE() {
     const mesIni   = document.getElementById('filtro-mes-ini').value;
     const mesFim   = document.getElementById('filtro-mes-fim').value;
     const depart   = document.getElementById('filtro-departamento').value;
+    const empresa  = document.getElementById('filtro-empresa').value;
 
     if (!ano || parseInt(mesIni) > parseInt(mesFim)) {
         mostrarErro('Período inválido: verifique o ano e os meses selecionados.');
@@ -506,6 +527,7 @@ async function gerarDRE() {
     try {
         const params = new URLSearchParams({ ano, mes_ini: mesIni, mes_fim: mesFim });
         if (depart) params.append('departamento', depart);
+        if (empresa) params.append('empresa_id', empresa);
 
         const data = await fetch(`/api/dre?${params}`).then(async r => {
             if (!r.ok) {
@@ -535,10 +557,14 @@ function renderizarTabela(data, codDepart) {
     // Título
     const depSel = document.getElementById('filtro-departamento');
     const depLabel = depSel.options[depSel.selectedIndex].text;
+    const empSel = document.getElementById('filtro-empresa');
+    const empLabel = empSel.options[empSel.selectedIndex].text;
+    const codEmpresa = empSel.value;
     const title = document.getElementById('table-title');
-    title.innerHTML = 'DRE' + (codDepart
-        ? ` <span class="cc-badge">${depLabel}</span>`
-        : '');
+    let badges = '';
+    if (codEmpresa) badges += ` <span class="cc-badge">${empLabel}</span>`;
+    if (codDepart)  badges += ` <span class="cc-badge">${depLabel}</span>`;
+    title.innerHTML = 'DRE' + badges;
     document.getElementById('table-meta').textContent =
         `${meses.length} mese${meses.length !== 1 ? 's' : ''}`;
 
