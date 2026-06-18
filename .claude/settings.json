@@ -14,7 +14,8 @@
       "Bash(python _probe_movimentos.py)",
       "mcp__claude_ai_Supabase__get_project",
       "Bash(python _backfill_movimentos.py)",
-      "Bash(python -m pip install truststore -q)"
+      "Bash(python -m pip install truststore -q)",
+      "Bash(PGPASSWORD=au7B3wYEeT8bxgPy psql -h aws-0-sa-east-1.pooler.supabase.com -p 5432 -U postgres.jcposydvpilkvszbjxlo -d postgres -c ' *)"
     ]
   }
 }

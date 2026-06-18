@@ -11,6 +11,10 @@
 --   que traz a data real de baixa por título inclusive em baixas agrupadas (vários títulos
 --   quitados num único movimento bancário). Fallbacks: ddtlanc do CC baixa direta e, por
 --   fim, data_previsao quando o título está liquidado.
+-- valor_documento em CP: usa nvalliquido dos Movimentos Financeiros quando disponível,
+--   pois representa o valor líquido após retenções de impostos (IR, ISS, COFINS, etc.).
+--   valor_rateio é escalado proporcionalmente para preservar a distribuição por categoria.
+--   Fallback: valor_documento bruto da conta (títulos ainda não pagos).
 -- =============================================================================
 
 CREATE OR REPLACE VIEW dw.vw_movimento_financeiro_unificado AS
@@ -44,9 +48,14 @@ SELECT
              ELSE NULL
         END
     )                                               AS data_pagamento,
-    cp.valor_documento,
-    COALESCE(cat.valor,      cp.valor_documento)    AS valor_rateio,
-    COALESCE(cat.percentual, 100.00)                AS percentual_rateio
+    COALESCE(mov_cp.nvalliquido, cp.valor_documento)                    AS valor_documento,
+    CASE
+        WHEN mov_cp.nvalliquido IS NOT NULL AND cp.valor_documento > 0
+        THEN COALESCE(cat.valor, cp.valor_documento)
+             * (mov_cp.nvalliquido / cp.valor_documento)
+        ELSE COALESCE(cat.valor, cp.valor_documento)
+    END                                                                 AS valor_rateio,
+    COALESCE(cat.percentual, 100.00)                                    AS percentual_rateio
 FROM staging.stg_fato_contas_pagar cp
 LEFT JOIN staging.stg_fato_contas_pagar_categorias cat
     ON  cat.id_empresa             = cp.id_empresa
@@ -67,7 +76,9 @@ LEFT JOIN (
 ) cc_baixa_cp ON cc_baixa_cp.id_empresa = cp.id_empresa
              AND cc_baixa_cp.ncodlanccp  = cp.codigo_lancamento_omie
 LEFT JOIN (
-    SELECT id_empresa, ncodtitulo, MAX(ddtpagamento) AS ddtpagamento
+    SELECT id_empresa, ncodtitulo,
+           MAX(ddtpagamento) AS ddtpagamento,
+           MAX(nvalliquido)  AS nvalliquido
     FROM   staging.stg_fato_movimentos
     WHERE  ddtpagamento IS NOT NULL AND cnatureza = 'P'
     GROUP  BY id_empresa, ncodtitulo
