@@ -7,7 +7,10 @@
 --
 -- Granularidade: (empresa, origem, lancamento, categoria)
 -- Departamento: primary department via LATERAL LIMIT 1 (simplificação MVP quando há múltiplos)
--- data_pagamento em CP/CR: ddtlanc do CC baixa (data real no banco) com fallback para data_previsao
+-- data_pagamento em CP/CR: prioriza dDtPagamento dos Movimentos Financeiros (financas/mf),
+--   que traz a data real de baixa por título inclusive em baixas agrupadas (vários títulos
+--   quitados num único movimento bancário). Fallbacks: ddtlanc do CC baixa direta e, por
+--   fim, data_previsao quando o título está liquidado.
 -- =============================================================================
 
 CREATE OR REPLACE VIEW dw.vw_movimento_financeiro_unificado AS
@@ -34,6 +37,7 @@ SELECT
     cp.data_emissao,
     cp.data_vencimento,
     COALESCE(
+        mov_cp.ddtpagamento,
         cc_baixa_cp.ddtlanc::DATE,
         CASE WHEN cp.status_titulo IN ('LIQUIDADO', 'RECEBIDO', 'PAGO')
              THEN cp.data_previsao
@@ -62,6 +66,13 @@ LEFT JOIN (
     GROUP  BY id_empresa, ncodlanccp
 ) cc_baixa_cp ON cc_baixa_cp.id_empresa = cp.id_empresa
              AND cc_baixa_cp.ncodlanccp  = cp.codigo_lancamento_omie
+LEFT JOIN (
+    SELECT id_empresa, ncodtitulo, MAX(ddtpagamento) AS ddtpagamento
+    FROM   staging.stg_fato_movimentos
+    WHERE  ddtpagamento IS NOT NULL AND cnatureza = 'P'
+    GROUP  BY id_empresa, ncodtitulo
+) mov_cp ON mov_cp.id_empresa = cp.id_empresa
+        AND mov_cp.ncodtitulo = cp.codigo_lancamento_omie
 WHERE cp.excluido = FALSE
 
 UNION ALL
@@ -89,6 +100,7 @@ SELECT
     cr.data_emissao::DATE                           AS data_emissao,
     cr.data_vencimento::DATE                        AS data_vencimento,
     COALESCE(
+        mov_cr.ddtpagamento,
         cc_baixa_cr.ddtlanc::DATE,
         CASE WHEN cr.status_titulo IN ('LIQUIDADO', 'RECEBIDO', 'PAGO')
              THEN cr.data_previsao::DATE
@@ -117,6 +129,13 @@ LEFT JOIN (
     GROUP  BY id_empresa, ncodlanccr
 ) cc_baixa_cr ON cc_baixa_cr.id_empresa = cr.id_empresa
              AND cc_baixa_cr.ncodlanccr  = cr.codigo_lancamento_omie
+LEFT JOIN (
+    SELECT id_empresa, ncodtitulo, MAX(ddtpagamento) AS ddtpagamento
+    FROM   staging.stg_fato_movimentos
+    WHERE  ddtpagamento IS NOT NULL AND cnatureza = 'R'
+    GROUP  BY id_empresa, ncodtitulo
+) mov_cr ON mov_cr.id_empresa = cr.id_empresa
+        AND mov_cr.ncodtitulo = cr.codigo_lancamento_omie
 WHERE cr.excluido = FALSE
 
 UNION ALL
