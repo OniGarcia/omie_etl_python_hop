@@ -8,7 +8,8 @@
       "PowerShell(Get-ChildItem -Path \"c:\\\\Projetos\\\\PROJETO_BI_OMIE_2026\\\\ETL_Omie_Unificado\" -Recurse -File | ForEach-Object { $_.FullName } | Sort-Object)",
       "mcp__claude_ai_Supabase__apply_migration",
       "Bash(python -m pip install openpyxl -q)",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "PowerShell($env:PGPASSWORD = \"au7B3wYEeT8bxgPy\"; psql -h db.jcposydvpilkvszbjxlo.supabase.co -p 5432 -U postgres -d postgres -c \"CALL dw.sp_load_fact_movimento_financeiro\\(\\);\" 2>&1)"
     ]
   }
 }

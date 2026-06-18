@@ -7,7 +7,7 @@
 --
 -- Granularidade: (empresa, origem, lancamento, categoria)
 -- Departamento: primary department via LATERAL LIMIT 1 (simplificação MVP quando há múltiplos)
--- data_pagamento em CP/CR: data_previsao quando status = 'LIQUIDADO'
+-- data_pagamento em CP/CR: ddtlanc do CC baixa (data real no banco) com fallback para data_previsao
 -- =============================================================================
 
 CREATE OR REPLACE VIEW dw.vw_movimento_financeiro_unificado AS
@@ -33,10 +33,13 @@ SELECT
     cp.id_conta_corrente                            AS cod_conta_corrente,
     cp.data_emissao,
     cp.data_vencimento,
-    CASE WHEN cp.status_titulo IN ('LIQUIDADO', 'RECEBIDO', 'PAGO')
-         THEN cp.data_previsao
-         ELSE NULL
-    END                                             AS data_pagamento,
+    COALESCE(
+        cc_baixa_cp.ddtlanc::DATE,
+        CASE WHEN cp.status_titulo IN ('LIQUIDADO', 'RECEBIDO', 'PAGO')
+             THEN cp.data_previsao
+             ELSE NULL
+        END
+    )                                               AS data_pagamento,
     cp.valor_documento,
     COALESCE(cat.valor,      cp.valor_documento)    AS valor_rateio,
     COALESCE(cat.percentual, 100.00)                AS percentual_rateio
@@ -52,6 +55,13 @@ LEFT JOIN LATERAL (
     ORDER  BY id
     LIMIT  1
 ) dep ON TRUE
+LEFT JOIN (
+    SELECT id_empresa, ncodlanccp, MIN(ddtlanc) AS ddtlanc
+    FROM   staging.stg_fato_lancamentos_cc
+    WHERE  ncodlanccp IS NOT NULL
+    GROUP  BY id_empresa, ncodlanccp
+) cc_baixa_cp ON cc_baixa_cp.id_empresa = cp.id_empresa
+             AND cc_baixa_cp.ncodlanccp  = cp.codigo_lancamento_omie
 WHERE cp.excluido = FALSE
 
 UNION ALL
@@ -78,10 +88,13 @@ SELECT
     cr.id_conta_corrente::VARCHAR                   AS cod_conta_corrente,
     cr.data_emissao::DATE                           AS data_emissao,
     cr.data_vencimento::DATE                        AS data_vencimento,
-    CASE WHEN cr.status_titulo IN ('LIQUIDADO', 'RECEBIDO', 'PAGO')
-         THEN cr.data_previsao::DATE
-         ELSE NULL
-    END                                             AS data_pagamento,
+    COALESCE(
+        cc_baixa_cr.ddtlanc::DATE,
+        CASE WHEN cr.status_titulo IN ('LIQUIDADO', 'RECEBIDO', 'PAGO')
+             THEN cr.data_previsao::DATE
+             ELSE NULL
+        END
+    )                                               AS data_pagamento,
     cr.valor_documento,
     COALESCE(cat.valor,      cr.valor_documento)    AS valor_rateio,
     COALESCE(cat.percentual, 100.00)                AS percentual_rateio
@@ -97,6 +110,13 @@ LEFT JOIN LATERAL (
     ORDER  BY id
     LIMIT  1
 ) dep ON TRUE
+LEFT JOIN (
+    SELECT id_empresa, ncodlanccr, MIN(ddtlanc) AS ddtlanc
+    FROM   staging.stg_fato_lancamentos_cc
+    WHERE  ncodlanccr IS NOT NULL
+    GROUP  BY id_empresa, ncodlanccr
+) cc_baixa_cr ON cc_baixa_cr.id_empresa = cr.id_empresa
+             AND cc_baixa_cr.ncodlanccr  = cr.codigo_lancamento_omie
 WHERE cr.excluido = FALSE
 
 UNION ALL
@@ -115,14 +135,17 @@ SELECT
     'CC'                                            AS origem,
     lcc.ncodlanc                                    AS codigo_lancamento_omie,
     CASE
-        WHEN lcc.ncodccdestino IS NOT NULL  THEN 'TRANSFERENCIA'
-        WHEN lcc.ctipo = 'ENT'              THEN 'CC_ENTRADA'
-        ELSE                                     'CC_SAIDA'
+        WHEN COALESCE(lcc.ncodccdestino, 0) > 0 THEN 'TRANSFERENCIA'
+        WHEN lcc.cnatureza = 'R'                 THEN 'CC_ENTRADA'
+        ELSE                                          'CC_SAIDA'
     END                                             AS tipo_movimento,
-    CASE WHEN lcc.ctipo = 'ENT' THEN 'C' ELSE 'D' END AS natureza,
+    CASE WHEN lcc.cnatureza = 'R' THEN 'C' ELSE 'D' END AS natureza,
     'LIQUIDADO'                                     AS status_titulo,
-    CASE WHEN lcc.ncodccdestino IS NOT NULL
-         THEN 'S' ELSE 'N'
+    CASE
+        WHEN COALESCE(lcc.ncodccdestino, 0) > 0 THEN 'S'  -- transferência CC→CC
+        WHEN COALESCE(lcc.ncodlanccp,    0) > 0 THEN 'S'  -- baixa de CP (duplicata no fact)
+        WHEN COALESCE(lcc.ncodlanccr,    0) > 0 THEN 'S'  -- baixa de CR (duplicata no fact)
+        ELSE 'N'                                           -- transação autônoma (rendimentos, tarifas)
     END                                             AS is_transferencia,
     COALESCE(cat.ccodcategoria, lcc.ccodcateg)      AS cod_categoria,
     dep.ccoddep                                     AS cod_departamento,
