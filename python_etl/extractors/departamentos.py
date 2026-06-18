@@ -6,7 +6,7 @@ class DepartamentosExtractor(BaseExtractor):
         return self.client.fetch_paginated(
             endpoint="geral/departamentos",
             call_name="ListarDepartamentos",
-            list_key="departamentosCadastro"
+            list_key="departamentos"
         )
 
     def clean_staging(self, cursor):
