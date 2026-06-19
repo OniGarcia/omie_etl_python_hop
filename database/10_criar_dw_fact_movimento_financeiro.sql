@@ -119,6 +119,7 @@ CREATE TABLE dw.dim_conta_corrente (
     codigo_banco        VARCHAR(10),
     numero_conta        VARCHAR(30),
     tipo                VARCHAR(50),
+    considerar          BOOLEAN         NOT NULL DEFAULT TRUE,
     dt_carga            TIMESTAMP       DEFAULT NOW()
 );
 
