@@ -28,14 +28,16 @@ class ContasCorrentesExtractor(BaseExtractor):
                 record.get("codigo_agencia"),
                 record.get("numero_conta_corrente"),
                 record.get("tipo"),
-                record.get("saldo_inicial")
+                record.get("saldo_inicial"),
+                record.get("nao_fluxo"),
+                record.get("nao_resumo"),
             ))
 
         query = """
             INSERT INTO staging.stg_cad_contas_correntes (
                 id_empresa, n_cod_cc, c_cod_cc_int, descricao,
                 codigo_banco, codigo_agencia, numero_conta_corrente,
-                tipo, saldo_inicial
+                tipo, saldo_inicial, nao_fluxo, nao_resumo
             ) VALUES %s
         """
         
