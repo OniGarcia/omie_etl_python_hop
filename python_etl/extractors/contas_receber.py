@@ -96,10 +96,10 @@ class ContasReceberExtractor(BaseExtractor):
                 db_departamentos_rows.append((
                     self.company_id,
                     codigo_lancamento_omie,
-                    dep.get("ccoddep"),
-                    dep.get("cdesdep"),
-                    dep.get("nperdep"),
-                    dep.get("nvaldep")
+                    dep.get("cCodDep"),
+                    dep.get("cDesDep"),
+                    dep.get("nPerDep"),
+                    dep.get("nValDep")
                 ))
 
         return db_receber_rows, db_categorias_rows, db_departamentos_rows

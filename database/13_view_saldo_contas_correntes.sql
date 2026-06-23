@@ -1,6 +1,7 @@
 -- =============================================================================
 -- View: Saldo Atual por Conta Corrente
 -- Calcula: saldo_inicial + soma de todos os lançamentos CC realizados
+-- Filtra: apenas contas marcadas com considerar = TRUE em dw.dim_conta_corrente
 -- =============================================================================
 CREATE OR REPLACE VIEW dw.vw_saldo_contas_correntes AS
 WITH movimentos AS (
@@ -22,6 +23,9 @@ SELECT
     COALESCE(m.total_movimentos, 0)                              AS total_movimentos,
     cc.saldo_inicial + COALESCE(m.total_movimentos, 0)          AS saldo_atual
 FROM staging.stg_cad_contas_correntes cc
+JOIN dw.dim_conta_corrente dcc
+    ON dcc.cod_conta_corrente = cc.n_cod_cc::VARCHAR
+   AND dcc.considerar = TRUE
 LEFT JOIN movimentos m
     ON cc.id_empresa = m.id_empresa
    AND cc.n_cod_cc   = m.ncodcc
@@ -31,6 +35,7 @@ WHERE cc.ativo = 'S';
 -- =============================================================================
 -- View: Evolução Diária do Saldo por Conta Corrente
 -- Calcula: saldo_inicial + movimentos acumulados até cada dia
+-- Filtra: apenas contas marcadas com considerar = TRUE em dw.dim_conta_corrente
 -- =============================================================================
 CREATE OR REPLACE VIEW dw.vw_saldo_contas_correntes_diario AS
 WITH movimentos_diarios AS (
@@ -67,4 +72,7 @@ SELECT
 FROM saldo_acumulado sa
 JOIN staging.stg_cad_contas_correntes cc
     ON sa.id_empresa = cc.id_empresa
-   AND sa.ncodcc     = cc.n_cod_cc;
+   AND sa.ncodcc     = cc.n_cod_cc
+JOIN dw.dim_conta_corrente dcc
+    ON dcc.cod_conta_corrente = cc.n_cod_cc::VARCHAR
+   AND dcc.considerar = TRUE;

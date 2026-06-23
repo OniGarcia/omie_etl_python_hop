@@ -189,17 +189,30 @@ def executar_etl_empresa(conn, company_id: int, company_name: str, app_key: str,
 # Lote completo (todas as empresas ativas)
 # =============================================================================
 
-def rodar_lote_completo(dry_run: bool = False, modo: str = "incremental"):
-    """Loop principal: busca empresas ativas e executa ETL para cada uma."""
-    logger.info(f"Iniciando lote completo [{modo.upper()}]...")
+def rodar_lote_completo(dry_run: bool = False, modo: str = "incremental", empresa_ids: list = None):
+    """Loop principal: busca empresas ativas e executa ETL para cada uma.
+
+    empresa_ids: lista opcional de IDs de empresas a processar. None = todas as ativas.
+    """
+    if empresa_ids:
+        logger.info(f"Iniciando lote [{modo.upper()}] para empresas selecionadas: {empresa_ids}...")
+    else:
+        logger.info(f"Iniciando lote completo [{modo.upper()}]...")
 
     empresas_ativas = []
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute(
-                "SELECT id, nome_empresa, omie_app_key, omie_app_secret "
-                "FROM config.empresas WHERE ativo = TRUE ORDER BY id"
-            )
+            if empresa_ids:
+                cursor.execute(
+                    "SELECT id, nome_empresa, omie_app_key, omie_app_secret "
+                    "FROM config.empresas WHERE ativo = TRUE AND id = ANY(%s) ORDER BY id",
+                    (empresa_ids,)
+                )
+            else:
+                cursor.execute(
+                    "SELECT id, nome_empresa, omie_app_key, omie_app_secret "
+                    "FROM config.empresas WHERE ativo = TRUE ORDER BY id"
+                )
             for r in cursor.fetchall():
                 empresas_ativas.append({"id": r[0], "nome": r[1], "key": r[2], "secret": r[3]})
 
